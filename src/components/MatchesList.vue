@@ -24,10 +24,10 @@ type MatchRow = {
   team_b_score: number
   team_a: {
     name: string
-  } | null
+  }[]
   team_b: {
     name: string
-  } | null
+  }[]
 }
 
 const teams = ref<Team[]>([])
@@ -319,7 +319,7 @@ watch(
 
                   <div class="d-flex flex-wrap align-items-center gap-2">
                     <span :class="getTeamClass(match, 'A')">
-                      {{ match.team_a?.name ?? 'Equipo A' }}
+                      {{ match.team_a?.[0]?.name ?? 'Equipo A' }}
                     </span>
 
                     <span class="badge text-bg-dark">
@@ -327,19 +327,19 @@ watch(
                     </span>
 
                     <span :class="getTeamClass(match, 'B')">
-                      {{ match.team_b?.name ?? 'Equipo B' }}
+                      {{ match.team_b?.[0]?.name ?? 'Equipo B' }}
                     </span>
 
                     <span
                         v-if="getWinner(match) === 'A'"
                         class="badge text-bg-success">
-                      Ganó {{ match.team_a?.name ?? 'Equipo A' }}
+                      Ganó  {{ match.team_a?.[0]?.name ?? 'Equipo A' }}
                     </span>
 
                     <span
                         v-else-if="getWinner(match) === 'B'"
                         class="badge text-bg-success">
-                      Ganó {{ match.team_b?.name ?? 'Equipo B' }}
+                      Ganó {{ match.team_b?.[0]?.name ?? 'Equipo B' }}
                     </span>
 
                     <span
