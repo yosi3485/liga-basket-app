@@ -1,0 +1,63 @@
+:root {
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #212529;
+  background-color: #f8f9fa;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+          radial-gradient(circle at top, #ffffff 0%, #f8f9fa 55%, #eef2f6 100%);
+  color: #212529;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+}
+
+.card.shadow-sm {
+  box-shadow: 0 0.5rem 1.2rem rgba(0, 0, 0, 0.06) !important;
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+.table > :not(caption) > * > * {
+  vertical-align: middle;
+}
+
+.btn {
+  border-radius: 10px;
+}
+
+.form-control,
+.form-select,
+.input-group-text {
+  border-radius: 10px;
+}
+
+.list-group-item {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .card-body {
+    padding: 1.5rem;
+  }
+}
