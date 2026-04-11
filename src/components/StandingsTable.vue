@@ -7,6 +7,15 @@ type TeamRow = {
   name: string
 }
 
+type BaseStandingRow = {
+  team_id: string
+  base_played: number
+  base_won: number
+  base_lost: number
+  base_points_for: number
+  base_points_against: number
+}
+
 type MatchRow = {
   id: string
   team_a_id: string
@@ -14,12 +23,6 @@ type MatchRow = {
   team_a_score: number
   team_b_score: number
   played_at: string
-  team_a: {
-    name: string
-  } | null
-  team_b: {
-    name: string
-  } | null
 }
 
 type StandingRow = {
@@ -38,6 +41,7 @@ const props = defineProps<{
 }>()
 
 const teams = ref<TeamRow[]>([])
+const baseStandings = ref<BaseStandingRow[]>([])
 const matches = ref<MatchRow[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
@@ -46,58 +50,74 @@ async function loadData() {
   loading.value = true
   errorMessage.value = ''
 
-  const [{ data: teamsData, error: teamsError }, { data: matchesData, error: matchesError }] =
-      await Promise.all([
-        supabase.from('teams').select('id, name').order('name', { ascending: true }),
-        supabase
-            .from('matches')
-            .select(`
-          id,
-          team_a_id,
-          team_b_id,
-          team_a_score,
-          team_b_score,
-          played_at,
-          team_a:team_a_id(name),
-          team_b:team_b_id(name)
-        `)
-            .order('played_at', { ascending: false })
-      ])
+  const [
+    { data: teamsData, error: teamsError },
+    { data: baseData, error: baseError },
+    { data: matchesData, error: matchesError }
+  ] = await Promise.all([
+    supabase.from('teams').select('id, name').order('name', { ascending: true }),
+    supabase.from('standings_base').select(`
+      team_id,
+      base_played,
+      base_won,
+      base_lost,
+      base_points_for,
+      base_points_against
+    `),
+    supabase
+        .from('matches')
+        .select(`
+        id,
+        team_a_id,
+        team_b_id,
+        team_a_score,
+        team_b_score,
+        played_at
+      `)
+        .order('played_at', { ascending: false })
+  ])
 
   if (teamsError) {
     errorMessage.value = teamsError.message
-    teams.value = []
-    matches.value = []
+    loading.value = false
+    return
+  }
+
+  if (baseError) {
+    errorMessage.value = baseError.message
     loading.value = false
     return
   }
 
   if (matchesError) {
     errorMessage.value = matchesError.message
-    teams.value = []
-    matches.value = []
     loading.value = false
     return
   }
 
   teams.value = teamsData ?? []
-  matches.value = (matchesData as MatchRow[]) ?? []
-
+  baseStandings.value = baseData ?? []
+  matches.value = matchesData ?? []
   loading.value = false
 }
 
 const standings = computed<StandingRow[]>(() => {
   const tableMap = new Map<string, StandingRow>()
+  const baseMap = new Map(
+      baseStandings.value.map((row) => [row.team_id, row])
+  )
 
   for (const team of teams.value) {
+    const base = baseMap.get(team.id)
+
     tableMap.set(team.id, {
       teamId: team.id,
       team: team.name,
-      played: 0,
-      won: 0,
-      lost: 0,
-      pointsFor: 0,
-      pointsAgainst: 0,
+      played: base?.base_played ?? 0,
+      won: base?.base_won ?? 0,
+      lost: base?.base_lost ?? 0,
+      pointsFor: base?.base_points_for ?? 0,
+      pointsAgainst: base?.base_points_against ?? 0,
       diff: 0
     })
   }
@@ -141,6 +161,38 @@ const standings = computed<StandingRow[]>(() => {
   return rows
 })
 
+const rivalrySummary = computed(() => {
+  const santaCruz = standings.value.find((row) => row.team === 'Santa Cruz')
+  const kendall = standings.value.find((row) => row.team === 'Kendall')
+
+  if (!santaCruz || !kendall) return null
+
+  const leader =
+      santaCruz.won > kendall.won
+          ? 'Santa Cruz'
+          : kendall.won > santaCruz.won
+              ? 'Kendall'
+              : 'Empate'
+
+  return {
+    santaCruzWins: santaCruz.won,
+    kendallWins: kendall.won,
+    totalGames: santaCruz.played,
+    leader
+  }
+})
+
+function diffClass(diff: number) {
+  if (diff > 0) return 'text-success fw-semibold'
+  if (diff < 0) return 'text-danger fw-semibold'
+  return 'text-muted fw-semibold'
+}
+
+function diffLabel(diff: number) {
+  if (diff > 0) return `+${diff}`
+  return `${diff}`
+}
+
 onMounted(() => {
   loadData()
 })
@@ -160,8 +212,35 @@ watch(
         <div>
           <h2 class="h4 mb-1">Tabla de posiciones</h2>
           <p class="text-muted mb-0">
-            Clasificación calculada automáticamente a partir de los partidos.
+            Incluye balance inicial más los partidos registrados en la app.
           </p>
+        </div>
+      </div>
+
+      <div
+          v-if="rivalrySummary && !loading && !errorMessage"
+          class="alert alert-secondary border mb-4"
+          role="alert">
+        <div class="d-flex flex-column flex-md-row justify-content-between gap-2">
+          <div>
+            <div class="fw-semibold mb-1">Récord histórico actual</div>
+            <div>
+              Santa Cruz
+              <span class="badge text-bg-dark mx-1">{{ rivalrySummary.santaCruzWins }}</span>
+              -
+              <span class="badge text-bg-dark mx-1">{{ rivalrySummary.kendallWins }}</span>
+              Kendall
+            </div>
+          </div>
+
+          <div class="text-md-end">
+            <div class="small text-muted">Total de juegos</div>
+            <div class="fw-semibold">{{ rivalrySummary.totalGames }}</div>
+            <div class="small">
+              Líder:
+              <span class="fw-semibold">{{ rivalrySummary.leader }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -194,7 +273,9 @@ watch(
             <td>{{ row.lost }}</td>
             <td>{{ row.pointsFor }}</td>
             <td>{{ row.pointsAgainst }}</td>
-            <td>{{ row.diff }}</td>
+            <td :class="diffClass(row.diff)">
+              {{ diffLabel(row.diff) }}
+            </td>
           </tr>
           </tbody>
         </table>

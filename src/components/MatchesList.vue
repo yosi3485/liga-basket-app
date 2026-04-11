@@ -186,6 +186,20 @@ async function deleteMatch(matchId: string) {
   saving.value = false
 }
 
+function getWinner(match: MatchRow) {
+  if (match.team_a_score > match.team_b_score) return 'A'
+  if (match.team_b_score > match.team_a_score) return 'B'
+  return 'DRAW'
+}
+
+function getTeamClass(match: MatchRow, side: 'A' | 'B') {
+  const winner = getWinner(match)
+
+  if (winner === 'DRAW') return 'text-body'
+  if (winner === side) return 'fw-bold text-success'
+  return 'text-muted'
+}
+
 onMounted(async () => {
   await loadTeams()
   await loadMatches()
@@ -302,10 +316,37 @@ watch(
               <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                 <div>
                   <div class="text-muted small mb-1">{{ match.played_at }}</div>
-                  <div class="fw-semibold">
-                    {{ match.team_a?.name ?? 'Equipo A' }}
-                    <span class="mx-2">{{ match.team_a_score }} - {{ match.team_b_score }}</span>
-                    {{ match.team_b?.name ?? 'Equipo B' }}
+
+                  <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span :class="getTeamClass(match, 'A')">
+                      {{ match.team_a?.name ?? 'Equipo A' }}
+                    </span>
+
+                    <span class="badge text-bg-dark">
+                      {{ match.team_a_score }} - {{ match.team_b_score }}
+                    </span>
+
+                    <span :class="getTeamClass(match, 'B')">
+                      {{ match.team_b?.name ?? 'Equipo B' }}
+                    </span>
+
+                    <span
+                        v-if="getWinner(match) === 'A'"
+                        class="badge text-bg-success">
+                      Ganó {{ match.team_a?.name ?? 'Equipo A' }}
+                    </span>
+
+                    <span
+                        v-else-if="getWinner(match) === 'B'"
+                        class="badge text-bg-success">
+                      Ganó {{ match.team_b?.name ?? 'Equipo B' }}
+                    </span>
+
+                    <span
+                        v-else
+                        class="badge text-bg-secondary">
+                      Empate
+                    </span>
                   </div>
                 </div>
 

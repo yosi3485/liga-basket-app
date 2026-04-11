@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabase'
 
 const emit = defineEmits<{
@@ -23,6 +23,34 @@ const teamAScore = ref<number | null>(null)
 const teamBScore = ref<number | null>(null)
 const playedAt = ref('')
 
+const selectedTeamAName = computed(() => {
+  return teams.value.find((team) => team.id === teamAId.value)?.name ?? 'Equipo A'
+})
+
+const selectedTeamBName = computed(() => {
+  return teams.value.find((team) => team.id === teamBId.value)?.name ?? 'Equipo B'
+})
+
+function setDefaultTeams() {
+  if (teams.value.length === 2) {
+    const santaCruz = teams.value.find((team) => team.name === 'Santa Cruz')
+    const kendall = teams.value.find((team) => team.name === 'Kendall')
+
+    if (santaCruz && kendall) {
+      teamAId.value = santaCruz.id
+      teamBId.value = kendall.id
+      return
+    }
+
+    teamAId.value = teams.value[0].id
+    teamBId.value = teams.value[1].id
+    return
+  }
+
+  teamAId.value = ''
+  teamBId.value = ''
+}
+
 async function loadTeams() {
   loadingTeams.value = true
   errorMessage.value = ''
@@ -37,17 +65,17 @@ async function loadTeams() {
     teams.value = []
   } else {
     teams.value = data ?? []
+    setDefaultTeams()
   }
 
   loadingTeams.value = false
 }
 
 function resetForm() {
-  teamAId.value = ''
-  teamBId.value = ''
   teamAScore.value = null
   teamBScore.value = null
   playedAt.value = ''
+  setDefaultTeams()
 }
 
 async function addMatch() {
@@ -115,7 +143,7 @@ onMounted(() => {
       <template v-else>
         <div class="row g-3">
           <div class="col-12">
-            <label for="team-a" class="form-label">Equipo A</label>
+            <label for="team-a" class="form-label">{{ selectedTeamAName }}</label>
             <select id="team-a" v-model="teamAId" class="form-select">
               <option value="">Selecciona un equipo</option>
               <option
@@ -128,7 +156,9 @@ onMounted(() => {
           </div>
 
           <div class="col-12 col-md-6">
-            <label for="team-a-score" class="form-label">Puntos equipo A</label>
+            <label for="team-a-score" class="form-label">
+              Puntos {{ selectedTeamAName }}
+            </label>
             <input
                 id="team-a-score"
                 v-model.number="teamAScore"
@@ -138,7 +168,7 @@ onMounted(() => {
           </div>
 
           <div class="col-12">
-            <label for="team-b" class="form-label">Equipo B</label>
+            <label for="team-b" class="form-label">{{ selectedTeamBName }}</label>
             <select id="team-b" v-model="teamBId" class="form-select">
               <option value="">Selecciona un equipo</option>
               <option
@@ -151,7 +181,9 @@ onMounted(() => {
           </div>
 
           <div class="col-12 col-md-6">
-            <label for="team-b-score" class="form-label">Puntos equipo B</label>
+            <label for="team-b-score" class="form-label">
+              Puntos {{ selectedTeamBName }}
+            </label>
             <input
                 id="team-b-score"
                 v-model.number="teamBScore"
