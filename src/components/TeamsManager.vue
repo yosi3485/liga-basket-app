@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../composables/useAuth'
 
 const emit = defineEmits<{
   (e: 'teams-changed'): void
 }>()
+
+const { isAdmin } = useAuth()
 
 type Team = {
   id: string
@@ -120,72 +123,78 @@ onMounted(() => {
         </p>
       </div>
 
-      <div class="mb-4">
-        <label for="new-team-name" class="form-label">Nuevo equipo</label>
-        <div class="input-group">
-          <input
-              id="new-team-name"
-              v-model="newTeamName"
-              type="text"
-              class="form-control"
-              placeholder="Nombre del equipo"
-              @keyup.enter="addTeam" />
-          <button class="btn btn-primary" :disabled="saving" @click="addTeam">
-            {{ saving ? 'Guardando...' : 'Agregar' }}
-          </button>
+      <div v-if="!isAdmin" class="alert alert-secondary mb-0" role="alert">
+        Solo los usuarios administradores pueden modificar equipos.
+      </div>
+
+      <template v-else>
+        <div class="mb-4">
+          <label for="new-team-name" class="form-label">Nuevo equipo</label>
+          <div class="input-group">
+            <input
+                id="new-team-name"
+                v-model="newTeamName"
+                type="text"
+                class="form-control"
+                placeholder="Nombre del equipo"
+                @keyup.enter="addTeam" />
+            <button class="btn btn-primary" :disabled="saving" @click="addTeam">
+              {{ saving ? 'Guardando...' : 'Agregar' }}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div v-if="errorMessage" class="alert alert-danger" role="alert">
-        {{ errorMessage }}
-      </div>
+        <div v-if="errorMessage" class="alert alert-danger" role="alert">
+          {{ errorMessage }}
+        </div>
 
-      <p v-if="loading" class="mb-0">Cargando equipos...</p>
+        <p v-if="loading" class="mb-0">Cargando equipos...</p>
 
-      <ul v-else-if="teams.length" class="list-group">
-        <li
-            v-for="team in teams"
-            :key="team.id"
-            class="list-group-item">
-          <template v-if="editingTeamId === team.id">
-            <div class="d-flex flex-column gap-2">
-              <input
-                  v-model="editingTeamName"
-                  type="text"
-                  class="form-control"
-                  @keyup.enter="updateTeam" />
+        <ul v-else-if="teams.length" class="list-group">
+          <li
+              v-for="team in teams"
+              :key="team.id"
+              class="list-group-item">
+            <template v-if="editingTeamId === team.id">
+              <div class="d-flex flex-column gap-2">
+                <input
+                    v-model="editingTeamName"
+                    type="text"
+                    class="form-control"
+                    @keyup.enter="updateTeam" />
 
-              <div class="d-flex gap-2 flex-wrap">
+                <div class="d-flex gap-2 flex-wrap">
+                  <button
+                      class="btn btn-success btn-sm"
+                      :disabled="saving"
+                      @click="updateTeam">
+                    Guardar
+                  </button>
+                  <button
+                      class="btn btn-outline-secondary btn-sm"
+                      :disabled="saving"
+                      @click="cancelEditing">
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                <span class="fw-medium">{{ team.name }}</span>
                 <button
-                    class="btn btn-success btn-sm"
-                    :disabled="saving"
-                    @click="updateTeam">
-                  Guardar
-                </button>
-                <button
-                    class="btn btn-outline-secondary btn-sm"
-                    :disabled="saving"
-                    @click="cancelEditing">
-                  Cancelar
+                    class="btn btn-outline-primary btn-sm"
+                    @click="startEditing(team)">
+                  Editar
                 </button>
               </div>
-            </div>
-          </template>
+            </template>
+          </li>
+        </ul>
 
-          <template v-else>
-            <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-              <span class="fw-medium">{{ team.name }}</span>
-              <button
-                  class="btn btn-outline-primary btn-sm"
-                  @click="startEditing(team)">
-                Editar
-              </button>
-            </div>
-          </template>
-        </li>
-      </ul>
-
-      <p v-else class="text-muted mb-0">No hay equipos todavía.</p>
+        <p v-else class="text-muted mb-0">No hay equipos todavía.</p>
+      </template>
     </div>
   </section>
 </template>

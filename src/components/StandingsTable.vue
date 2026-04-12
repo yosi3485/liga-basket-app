@@ -50,55 +50,52 @@ async function loadData() {
   loading.value = true
   errorMessage.value = ''
 
-  const [
-    { data: teamsData, error: teamsError },
-    { data: baseData, error: baseError },
-    { data: matchesData, error: matchesError }
-  ] = await Promise.all([
-    supabase.from('teams').select('id, name').order('name', { ascending: true }),
-    supabase.from('standings_base').select(`
-      team_id,
-      base_played,
-      base_won,
-      base_lost,
-      base_points_for,
-      base_points_against
-    `),
-    supabase
-        .from('matches')
-        .select(`
-        id,
-        team_a_id,
-        team_b_id,
-        team_a_score,
-        team_b_score,
-        played_at
-      `)
-        .order('played_at', { ascending: false })
-  ])
+  try {
+    const [
+      { data: teamsData, error: teamsError },
+      { data: baseData, error: baseError },
+      { data: matchesData, error: matchesError }
+    ] = await Promise.all([
+      supabase
+          .from('teams')
+          .select('id, name')
+          .order('name', { ascending: true }),
+      supabase
+          .from('standings_base')
+          .select(`
+          team_id,
+          base_played,
+          base_won,
+          base_lost,
+          base_points_for,
+          base_points_against
+        `),
+      supabase
+          .from('matches')
+          .select(`
+          id,
+          team_a_id,
+          team_b_id,
+          team_a_score,
+          team_b_score,
+          played_at
+        `)
+          .order('played_at', { ascending: false })
+    ])
 
-  if (teamsError) {
-    errorMessage.value = teamsError.message
+    if (teamsError) throw teamsError
+    if (baseError) throw baseError
+    if (matchesError) throw matchesError
+
+    teams.value = teamsData ?? []
+    baseStandings.value = baseData ?? []
+    matches.value = matchesData ?? []
+  } catch (error) {
+    errorMessage.value =
+        error instanceof Error ? error.message : 'Error cargando la tabla'
+  } finally {
     loading.value = false
-    return
   }
-
-  if (baseError) {
-    errorMessage.value = baseError.message
-    loading.value = false
-    return
-  }
-
-  if (matchesError) {
-    errorMessage.value = matchesError.message
-    loading.value = false
-    return
-  }
-
-  teams.value = teamsData ?? []
-  baseStandings.value = baseData ?? []
-  matches.value = matchesData ?? []
-  loading.value = false
 }
 
 const standings = computed<StandingRow[]>(() => {

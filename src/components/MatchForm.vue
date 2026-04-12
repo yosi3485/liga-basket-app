@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../composables/useAuth'
 
 const emit = defineEmits<{
   (e: 'match-created'): void
 }>()
+
+const { isAdmin } = useAuth()
 
 type Team = {
   id: string
@@ -138,7 +141,11 @@ onMounted(() => {
         </p>
       </div>
 
-      <p v-if="loadingTeams" class="mb-0">Cargando equipos...</p>
+      <div v-if="!isAdmin" class="alert alert-secondary mb-0" role="alert">
+        Solo los usuarios administradores pueden registrar partidos.
+      </div>
+
+      <p v-else-if="loadingTeams" class="mb-0">Cargando equipos...</p>
 
       <template v-else>
         <div class="row g-3">

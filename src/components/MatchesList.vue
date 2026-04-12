@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, computed } from 'vue'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../composables/useAuth'
+import { formatDate } from '../utils/date'
 
 const props = defineProps<{
   refreshKey: number
@@ -22,13 +24,9 @@ type MatchRow = {
   team_b_id: string
   team_a_score: number
   team_b_score: number
-  team_a: {
-    name: string
-  }[]
-  team_b: {
-    name: string
-  }[]
 }
+
+const { isAdmin } = useAuth()
 
 const teams = ref<Team[]>([])
 const matches = ref<MatchRow[]>([])
@@ -43,6 +41,10 @@ const teamBId = ref('')
 const teamAScore = ref<number | null>(null)
 const teamBScore = ref<number | null>(null)
 const playedAt = ref('')
+
+const teamsMap = computed(() => {
+  return new Map(teams.value.map((team) => [team.id, team.name]))
+})
 
 async function loadTeams() {
   const { data, error } = await supabase
@@ -71,9 +73,7 @@ async function loadMatches() {
       team_a_id,
       team_b_id,
       team_a_score,
-      team_b_score,
-      team_a:team_a_id(name),
-      team_b:team_b_id(name)
+      team_b_score
     `)
       .order('played_at', { ascending: false })
 
@@ -85,6 +85,10 @@ async function loadMatches() {
   }
 
   loading.value = false
+}
+
+function teamName(teamId: string, fallback: string) {
+  return teamsMap.value.get(teamId) ?? fallback
 }
 
 function startEditing(match: MatchRow) {
@@ -315,31 +319,32 @@ watch(
             <template v-else>
               <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                 <div>
-                  <div class="text-muted small mb-1">{{ match.played_at }}</div>
+                  <div class="text-muted small mb-1">{{ formatDate(match.played_at) }}</div>
 
                   <div class="d-flex flex-wrap align-items-center gap-2">
                     <span :class="getTeamClass(match, 'A')">
-                      {{ match.team_a?.[0]?.name ?? 'Equipo A' }}
+                      {{ teamName(match.team_a_id, 'Equipo A') }}
                     </span>
 
-                    <span class="badge text-bg-dark">
+                    <span class="badge bg-dark fs-6 px-3 py-2">
+                      <i class="fa-solid fa-basketball me-1"></i>
                       {{ match.team_a_score }} - {{ match.team_b_score }}
                     </span>
 
                     <span :class="getTeamClass(match, 'B')">
-                      {{ match.team_b?.[0]?.name ?? 'Equipo B' }}
+                      {{ teamName(match.team_b_id, 'Equipo B') }}
                     </span>
 
                     <span
                         v-if="getWinner(match) === 'A'"
                         class="badge text-bg-success">
-                      Ganó  {{ match.team_a?.[0]?.name ?? 'Equipo A' }}
+                      Ganó {{ teamName(match.team_a_id, 'Equipo A') }}
                     </span>
 
                     <span
                         v-else-if="getWinner(match) === 'B'"
                         class="badge text-bg-success">
-                      Ganó {{ match.team_b?.[0]?.name ?? 'Equipo B' }}
+                      Ganó {{ teamName(match.team_b_id, 'Equipo B') }}
                     </span>
 
                     <span
@@ -350,7 +355,7 @@ watch(
                   </div>
                 </div>
 
-                <div class="d-flex gap-2 flex-wrap">
+                <div v-if="isAdmin" class="d-flex gap-2 flex-wrap">
                   <button
                       class="btn btn-outline-primary btn-sm"
                       :disabled="saving"
