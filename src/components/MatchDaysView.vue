@@ -27,7 +27,6 @@ type MatchRow = {
 const teams = ref<TeamRow[]>([])
 const matches = ref<MatchRow[]>([])
 const selectedDate = ref('')
-const selectedMatchId = ref<string | null>(null)
 const loading = ref(false)
 const errorMessage = ref('')
 
