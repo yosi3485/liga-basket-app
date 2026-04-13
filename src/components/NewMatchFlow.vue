@@ -141,19 +141,19 @@ function setDefaultTeams() {
   }
 }
 
-function resetFlow() {
-  selectedInProgressMatchId.value = ''
-  matchId.value = ''
-  playedAt.value = getTodayLocalDate()
-  teamAId.value = ''
-  teamBId.value = ''
-  selectedPlayerIds.value = []
-  stats.value = {}
-  step.value = 1
-  successMessage.value = ''
-  errorMessage.value = ''
-  setDefaultTeams()
-}
+// function resetFlow() {
+//   selectedInProgressMatchId.value = ''
+//   matchId.value = ''
+//   playedAt.value = getTodayLocalDate()
+//   teamAId.value = ''
+//   teamBId.value = ''
+//   selectedPlayerIds.value = []
+//   stats.value = {}
+//   step.value = 1
+//   successMessage.value = ''
+//   errorMessage.value = ''
+//   setDefaultTeams()
+// }
 
 async function loadExistingMatch() {
   errorMessage.value = ''
@@ -297,24 +297,46 @@ function isSelected(playerId: string) {
   return selectedPlayerIds.value.includes(playerId)
 }
 
-function updateStat(playerId: string, field: 'points' | 'threes', value: string) {
+function addQuickPoints(playerId: string, amount: number) {
   if (!stats.value[playerId]) {
     stats.value[playerId] = { points: 0, threes: 0 }
   }
 
-  if (value === '') {
-    stats.value[playerId][field] = 0
+  stats.value[playerId].points += amount
+
+  if (amount === 2) {
+    stats.value[playerId].threes += 1
+  }
+}
+
+function removeQuickPoints(playerId: string, amount: number) {
+  if (!stats.value[playerId]) {
+    stats.value[playerId] = { points: 0, threes: 0 }
+  }
+
+  const currentPoints = stats.value[playerId].points
+  const currentThrees = stats.value[playerId].threes
+
+  if (amount === 1) {
+    stats.value[playerId].points = Math.max(0, currentPoints - 1)
     return
   }
 
-  const parsedValue = Number(value)
-  stats.value[playerId][field] = Number.isNaN(parsedValue) ? 0 : parsedValue
+  if (amount === 2) {
+    if (currentPoints >= 2) {
+      stats.value[playerId].points = currentPoints - 2
+      stats.value[playerId].threes = Math.max(0, currentThrees - 1)
+    }
+  }
 }
 
-function statInputValue(playerId: string, field: 'points' | 'threes') {
-  if (!stats.value[playerId]) return ''
-  const value = stats.value[playerId][field]
-  return value === 0 ? '' : String(value)
+function isTopScorer(playerId: string) {
+  const allPoints = rosterPlayers.value.map(
+      (player) => stats.value[player.id]?.points ?? 0
+  )
+
+  const maxPoints = Math.max(0, ...allPoints)
+  return (stats.value[playerId]?.points ?? 0) > 0 && (stats.value[playerId]?.points ?? 0) === maxPoints
 }
 
 function validateStep1() {
@@ -571,12 +593,6 @@ loadData()
           </p>
         </div>
 
-        <button
-            type="button"
-            class="btn btn-outline-secondary btn-sm"
-            @click="resetFlow">
-          Nuevo partido limpio
-        </button>
       </div>
 
       <div v-if="!isAdmin" class="alert alert-secondary mb-0" role="alert">
@@ -612,7 +628,7 @@ loadData()
         <div class="mb-4">
           <div class="d-flex gap-2 flex-wrap">
             <span class="badge" :class="step === 1 ? 'text-bg-dark' : 'text-bg-secondary'">Paso 1 · Fecha / Equipos</span>
-            <span class="badge" :class="step === 2 ? 'text-bg-dark' : 'text-bg-secondary'">Paso 2 · Jugadores que fueron</span>
+            <span class="badge" :class="step === 2 ? 'text-bg-dark' : 'text-bg-secondary'">Paso 2 · Jugadores</span>
             <span class="badge" :class="step === 3 ? 'text-bg-dark' : 'text-bg-secondary'">Paso 3 · Stats en vivo / Finalizar</span>
           </div>
         </div>
@@ -653,6 +669,8 @@ loadData()
 
         <div v-else-if="step === 2" class="row g-4">
           <div class="col-12 col-xl-6">
+            <div class="card h-100 border-start border-4 border-primary shadow-sm">
+              <div class="card-body">
             <h3 class="h5 mb-2">{{ selectedTeamAName }}</h3>
             <p
                 class="small mb-3"
@@ -678,9 +696,13 @@ loadData()
                 </div>
               </li>
             </ul>
+              </div>
+            </div>
           </div>
 
           <div class="col-12 col-xl-6">
+            <div class="card h-100 border-start border-4 border-success shadow-sm">
+              <div class="card-body">
             <h3 class="h5 mb-2">{{ selectedTeamBName }}</h3>
             <p
                 class="small mb-3"
@@ -706,6 +728,8 @@ loadData()
                 </div>
               </li>
             </ul>
+              </div>
+            </div>
           </div>
 
           <div class="col-12 d-flex gap-2 flex-wrap">
@@ -720,86 +744,147 @@ loadData()
 
         <div v-else class="row g-4">
           <div class="col-12">
-            <div class="card border">
-              <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                <div class="fw-bold fs-5">{{ selectedTeamAName }}</div>
-                <div class="badge bg-dark fs-4 px-4 py-3">
-                  <i class="fa-solid fa-basketball me-2"></i>
-                  {{ liveTeamAScore }} - {{ liveTeamBScore }}
-                </div>
-                <div class="fw-bold fs-5 text-md-end">{{ selectedTeamBName }}</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="col-12">
             <div class="alert alert-info mb-0" role="alert">
               El partido está en progreso. Puedes guardar avance varias veces y finalizar cuando termine.
             </div>
           </div>
 
           <div class="col-12 col-xl-6">
-            <h3 class="h5 mb-3">{{ selectedTeamAName }}</h3>
+            <div class="card h-100 border-start border-4 border-primary shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                <h3 class="h5 mb-3">{{ selectedTeamAName }}</h3>
+                  <span class="badge text-bg-primary">
+                    {{ liveTeamAScore }} pts
+                  </span>
+                </div>
 
             <div v-if="rosterTeamAPlayers.length">
               <div
                   v-for="player in rosterTeamAPlayers"
                   :key="player.id"
-                  class="row g-2 align-items-center mb-2">
-                <div class="col-12 col-md-4">
-                  <span class="fw-semibold">{{ player.name }}</span>
-                </div>
+                  :class="[
+  'card border-0 mb-3 shadow-sm',
+  isTopScorer(player.id) ? 'bg-warning-subtle' : 'bg-light'
+]">
+                <div class="card-body py-3 px-3">
+                  <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+                    <div>
+                      <div class="fw-semibold">{{ player.name }}</div>
+                    </div>
 
-                <div class="col-6 col-md-4">
-                  <input
-                      type="number"
-                      class="form-control"
-                      placeholder="Puntos"
-                      :value="statInputValue(player.id, 'points')"
-                      @input="updateStat(player.id, 'points', ($event.target as HTMLInputElement).value)" />
-                </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                      <span class="badge text-bg-dark px-3 py-2 fs-6">
+                        {{ stats[player.id]?.points ?? 0 }} pts
+                      </span>
+                                          <span class="badge text-bg-secondary px-3 py-2 fs-6">
+                        {{ stats[player.id]?.threes ?? 0 }} 3PT
+                      </span>
+                    </div>
+                  </div>
 
-                <div class="col-6 col-md-4">
-                  <input
-                      type="number"
-                      class="form-control"
-                      placeholder="3PT"
-                      :value="statInputValue(player.id, 'threes')"
-                      @input="updateStat(player.id, 'threes', ($event.target as HTMLInputElement).value)" />
+                  <div class="d-flex gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        class="btn btn-outline-danger"
+                        @click="removeQuickPoints(player.id, 1)">
+                      -1
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline-danger"
+                        @click="removeQuickPoints(player.id, 2)">
+                      -2
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline-primary"
+                        @click="addQuickPoints(player.id, 1)">
+                      +1
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-warning fw-bold"
+                        @click="addQuickPoints(player.id, 2)">
+                      +2 · 3PT
+                    </button>
+                  </div>
                 </div>
+              </div>
+            </div>
               </div>
             </div>
           </div>
 
           <div class="col-12 col-xl-6">
-            <h3 class="h5 mb-3">{{ selectedTeamBName }}</h3>
+            <div class="card h-100 border-start border-4 border-success shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="h5 mb-3">{{ selectedTeamBName }}</h3>
+                    <span class="badge text-bg-success">
+                      {{ liveTeamBScore }} pts
+                    </span>
+                </div>
 
             <div v-if="rosterTeamBPlayers.length">
               <div
                   v-for="player in rosterTeamBPlayers"
                   :key="player.id"
-                  class="row g-2 align-items-center mb-2">
-                <div class="col-12 col-md-4">
-                  <span class="fw-semibold">{{ player.name }}</span>
-                </div>
+                  :class="[
+  'card border-0 mb-3 shadow-sm',
+  isTopScorer(player.id) ? 'bg-warning-subtle' : 'bg-light'
+]">
+                <div class="card-body py-3 px-3">
+                  <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap mb-3">
+                    <div>
+                      <div class="fw-semibold">{{ player.name }}</div>
+                    </div>
 
-                <div class="col-6 col-md-4">
-                  <input
-                      type="number"
-                      class="form-control"
-                      placeholder="Puntos"
-                      :value="statInputValue(player.id, 'points')"
-                      @input="updateStat(player.id, 'points', ($event.target as HTMLInputElement).value)" />
-                </div>
+                    <div class="d-flex gap-2 flex-wrap">
+  <span class="badge text-bg-dark px-3 py-2 fs-6">
+    {{ stats[player.id]?.points ?? 0 }} pts
+  </span>
+                      <span class="badge text-bg-secondary px-3 py-2 fs-6">
+    {{ stats[player.id]?.threes ?? 0 }} 3PT
+  </span>
+                    </div>
+                  </div>
 
-                <div class="col-6 col-md-4">
-                  <input
-                      type="number"
-                      class="form-control"
-                      placeholder="3PT"
-                      :value="statInputValue(player.id, 'threes')"
-                      @input="updateStat(player.id, 'threes', ($event.target as HTMLInputElement).value)" />
+                  <div class="d-flex gap-2 flex-wrap">
+                    <button
+                        type="button"
+                        class="btn btn-outline-danger"
+                        @click="removeQuickPoints(player.id, 1)">
+                      -1
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline-danger"
+                        @click="removeQuickPoints(player.id, 2)">
+                      -2
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-outline-primary"
+                        @click="addQuickPoints(player.id, 1)">
+                      +1
+                    </button>
+
+                    <button
+                        type="button"
+                        class="btn btn-warning fw-bold"
+                        @click="addQuickPoints(player.id, 2)">
+                      +2 · 3PT
+                    </button>
+                  </div>
                 </div>
+              </div>
+            </div>
               </div>
             </div>
           </div>

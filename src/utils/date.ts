@@ -1,12 +1,10 @@
-export function formatDate(value: string): string {
-    if (!value) return ''
+export function formatDate(date: string) {
+    const [year, month, day] = date.split('-').map(Number)
+    const d = new Date(year, month - 1, day)
 
-    const date = new Date(`${value}T00:00:00`)
+    const monthName = d.toLocaleDateString('es-ES', { month: 'long' })
+    const capitalizedMonth =
+        monthName.charAt(0).toUpperCase() + monthName.slice(1)
 
-    return new Intl.DateTimeFormat('es-US', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-    }).format(date)
+    return `${capitalizedMonth} ${day}, ${year}`
 }

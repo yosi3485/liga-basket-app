@@ -342,6 +342,7 @@ onMounted(async () => {
                 <span
                     class="badge"
                     :class="selectedMatch.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+                  <i class="fa-solid fa-circle me-1"></i>
                   {{ selectedMatch.status === 'finished' ? 'Finalizado' : 'En progreso' }}
                 </span>
               </div>

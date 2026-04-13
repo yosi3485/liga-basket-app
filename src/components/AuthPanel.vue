@@ -69,26 +69,26 @@ onMounted(() => {
 
       <template v-else-if="session">
         <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-          <div class="min-w-0">
-            <div class="small text-muted">Sesión activa</div>
-            <div class="fw-semibold small text-break">{{ session.user.email }}</div>
-          </div>
+          <div class="d-flex align-items-center gap-2">
+    <span class="badge text-bg-dark">
+      <i class="fa-solid fa-user me-1"></i>
+      {{ session.user.email }}
+    </span>
 
-          <div class="d-flex align-items-center gap-2 flex-wrap">
             <span
                 class="badge"
                 :class="isAdmin ? 'text-bg-success' : 'text-bg-secondary'">
-              {{ isAdmin ? 'Admin' : 'Solo lectura' }}
-            </span>
-
-            <button
-                type="button"
-                class="btn btn-outline-danger btn-sm"
-                :disabled="loading"
-                @click="signOut">
-              {{ loading ? 'Cerrando...' : 'Salir' }}
-            </button>
+      {{ isAdmin ? 'Admin' : 'Solo lectura' }}
+    </span>
           </div>
+
+          <button
+              type="button"
+              class="btn btn-outline-danger btn-sm"
+              :disabled="loading"
+              @click="signOut">
+            {{ loading ? 'Cerrando...' : 'Salir' }}
+          </button>
         </div>
       </template>
 

@@ -341,13 +341,18 @@ watch(
             <template v-else>
               <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                 <div>
-                  <div class="text-muted small mb-1">{{ matchLabel(match) }}</div>
+<!--                  <div class="text-muted small mb-1">{{ matchLabel(match) }}</div>-->
 
-                  <span
-                      class="badge ms-2"
-                      :class="match.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
-                    {{ match.status === 'finished' ? 'Finalizado' : 'En progreso' }}
-                  </span>
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <strong>{{ matchLabel(match) }}</strong>
+
+                    <span
+                        class="badge"
+                        :class="match.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+                        <i class="fa-solid fa-circle me-1"></i>
+                        {{ match.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+                    </span>
+                  </div>
 
                   <div class="d-flex flex-wrap align-items-center gap-2">
                     <span :class="getTeamClass(match, 'A')">

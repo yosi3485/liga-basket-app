@@ -110,7 +110,7 @@ function teamClass(match: MatchRow, side: 'A' | 'B') {
   const result = winner(match)
 
   if (result === 'DRAW') return 'text-body'
-  if (result === side) return 'fw-bold text-success'
+  if (result === side) return 'fw-bold text-success-emphasis'
   return 'text-muted'
 }
 
@@ -156,9 +156,18 @@ onMounted(() => {
 
         <template v-if="selectedDate">
           <div class="mb-3">
-            <h3 class="h5 mb-1">{{ formatDate(selectedDate) }}</h3>
+            <h3 class="h5 mb-1 d-flex align-items-center gap-2">
+              {{ formatDate(selectedDate) }}
+
+              <span class="badge text-bg-dark">
+                Jornada
+              </span>
+            </h3>
+            <div class="small text-muted">
+              Jornada del día
+            </div>
             <p class="text-muted mb-0">
-              {{ matchesForSelectedDate.length }} partido(s) registrado(s)
+              {{ matchesForSelectedDate.length }} partido(s) en esta jornada
             </p>
           </div>
 
@@ -168,43 +177,66 @@ onMounted(() => {
                 :key="match.id"
                 class="card border">
               <div class="card-body">
-                <div class="text-muted small mb-2">
-                  {{ matchTitle(match) }}
+                <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                  <div class="text-muted small">
+                    {{ matchTitle(match) }}
+                  </div>
+
+                  <span
+                      class="badge"
+                      :class="match.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+      <i class="fa-solid fa-circle me-1"></i>
+      {{ match.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+    </span>
                 </div>
 
-                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-                  <span :class="teamClass(match, 'A')">
-                    {{ teamName(match.team_a_id, 'Equipo A') }}
-                  </span>
+                <div class="row align-items-center text-center g-3 mb-3">
+                  <div class="col-12 col-md-4">
+                    <div :class="teamClass(match, 'A')">
+                      <i
+                          v-if="winner(match) === 'A'"
+                          class="fa-solid fa-trophy me-1 text-warning"></i>
+                      {{ teamName(match.team_a_id, 'Equipo A') }}
+                    </div>
+                  </div>
 
-                  <span class="badge bg-dark fs-6 px-3 py-2">
-                    <i class="fa-solid fa-basketball me-1"></i>
-                    {{ match.team_a_score }} - {{ match.team_b_score }}
-                  </span>
+                  <div class="col-12 col-md-4">
+      <span class="badge bg-dark fs-5 px-4 py-3">
+        <i class="fa-solid fa-basketball me-1"></i>
+        {{ match.team_a_score }} - {{ match.team_b_score }}
+      </span>
+                  </div>
 
-                  <span :class="teamClass(match, 'B')">
-                    {{ teamName(match.team_b_id, 'Equipo B') }}
-                  </span>
+                  <div class="col-12 col-md-4">
+                    <div :class="teamClass(match, 'B')">
+                      <i
+                          v-if="winner(match) === 'B'"
+                          class="fa-solid fa-trophy me-1 text-warning"></i>
+                      {{ teamName(match.team_b_id, 'Equipo B') }}
+                    </div>
+                  </div>
                 </div>
 
-                <div class="mt-3 d-flex gap-2 flex-wrap">
-                  <span
-                      v-if="winner(match) === 'A'"
-                      class="badge text-bg-success">
-                    Ganó {{ teamName(match.team_a_id, 'Equipo A') }}
-                  </span>
+                <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
+                  <div>
+                    <div
+                        v-if="winner(match) === 'A'"
+                        class="small fw-semibold text-success">
+                      Ganador: {{ teamName(match.team_a_id, 'Equipo A') }}
+                    </div>
 
-                  <span
-                      v-else-if="winner(match) === 'B'"
-                      class="badge text-bg-success">
-                    Ganó {{ teamName(match.team_b_id, 'Equipo B') }}
-                  </span>
+                    <div
+                        v-else-if="winner(match) === 'B'"
+                        class="small fw-semibold text-success">
+                      Ganador: {{ teamName(match.team_b_id, 'Equipo B') }}
+                    </div>
 
-                  <span
-                      v-else
-                      class="badge text-bg-secondary">
-                    Empate
-                  </span>
+                    <div
+                        v-else
+                        class="small fw-semibold text-secondary">
+                      Empate
+                    </div>
+                  </div>
 
                   <button
                       type="button"
