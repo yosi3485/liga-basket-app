@@ -22,6 +22,8 @@ type MatchRow = {
   team_a_score: number
   team_b_score: number
   played_at: string
+  created_at: string
+  status: 'in_progress' | 'finished'
 }
 
 type StandingRow = {
@@ -73,8 +75,9 @@ async function loadData() {
       supabase.from('standings_base').select('team_id, base_played, base_won, base_lost'),
       supabase
           .from('matches')
-          .select('id, team_a_id, team_b_id, team_a_score, team_b_score, played_at')
-          .order('played_at', { ascending: false }),
+          .select('id, team_a_id, team_b_id, team_a_score, team_b_score, played_at, created_at, status')
+          .order('played_at', { ascending: false })
+          .order('created_at', { ascending: false }),
       supabase.from('players').select('id, name, team_id'),
       supabase.from('player_game_stats').select('player_id, points, three_pointers')
     ])
@@ -115,7 +118,7 @@ const standings = computed<StandingRow[]>(() => {
     })
   }
 
-  for (const match of matches.value) {
+  for (const match of finishedMatches.value) {
     const teamA = tableMap.get(match.team_a_id)
     const teamB = tableMap.get(match.team_b_id)
 
@@ -158,9 +161,9 @@ const rivalryRecord = computed(() => {
 })
 
 const latestMatch = computed(() => {
-  if (!matches.value.length) return null
+  if (!finishedMatches.value.length) return null
 
-  const match = matches.value[0]
+  const match = finishedMatches.value[0]
   const teamMap = new Map(teams.value.map((team) => [team.id, team.name]))
 
   return {
@@ -202,6 +205,10 @@ const topScorer = computed(() => {
 
 const topThreeShooter = computed(() => {
   return [...playerTotals.value].sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
+})
+
+const finishedMatches = computed(() => {
+  return matches.value.filter((match) => match.status === 'finished')
 })
 
 onMounted(loadData)

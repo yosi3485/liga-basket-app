@@ -2,7 +2,7 @@
 import { onMounted, ref, watch, computed } from 'vue'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
-import { formatDate } from '../utils/date'
+import { getMatchLabel } from '../utils/matches'
 
 const props = defineProps<{
   refreshKey: number
@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'matches-changed'): void
+  (e: 'open-match-details', matchId: string): void
 }>()
 
 type Team = {
@@ -20,10 +21,12 @@ type Team = {
 type MatchRow = {
   id: string
   played_at: string
+  created_at: string
   team_a_id: string
   team_b_id: string
   team_a_score: number
   team_b_score: number
+  status: 'in_progress' | 'finished'
 }
 
 const { isAdmin } = useAuth()
@@ -65,17 +68,22 @@ async function loadMatches() {
   errorMessage.value = ''
   successMessage.value = ''
 
-  const { data, error } = await supabase
+  let query = supabase
       .from('matches')
       .select(`
       id,
       played_at,
+      created_at,
       team_a_id,
       team_b_id,
       team_a_score,
-      team_b_score
+      team_b_score,
+      status
     `)
       .order('played_at', { ascending: false })
+      .order('created_at', { ascending: false })
+
+  const { data, error } = await query
 
   if (error) {
     errorMessage.value = error.message
@@ -129,6 +137,16 @@ async function updateMatch() {
 
   if (teamAScore.value === null || teamBScore.value === null) {
     errorMessage.value = 'Escribe los dos marcadores.'
+    return
+  }
+
+  if (teamAScore.value === teamBScore.value) {
+    errorMessage.value = 'El partido no puede terminar empatado.'
+    return
+  }
+
+  if (teamAScore.value < 7 && teamBScore.value < 7) {
+    errorMessage.value = 'El equipo ganador debe llegar al menos a 7 puntos.'
     return
   }
 
@@ -202,6 +220,10 @@ function getTeamClass(match: MatchRow, side: 'A' | 'B') {
   if (winner === 'DRAW') return 'text-body'
   if (winner === side) return 'fw-bold text-success'
   return 'text-muted'
+}
+
+function matchLabel(match: MatchRow) {
+  return getMatchLabel(match, matches.value)
 }
 
 onMounted(async () => {
@@ -319,7 +341,13 @@ watch(
             <template v-else>
               <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                 <div>
-                  <div class="text-muted small mb-1">{{ formatDate(match.played_at) }}</div>
+                  <div class="text-muted small mb-1">{{ matchLabel(match) }}</div>
+
+                  <span
+                      class="badge ms-2"
+                      :class="match.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+                    {{ match.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+                  </span>
 
                   <div class="d-flex flex-wrap align-items-center gap-2">
                     <span :class="getTeamClass(match, 'A')">
@@ -355,19 +383,28 @@ watch(
                   </div>
                 </div>
 
-                <div v-if="isAdmin" class="d-flex gap-2 flex-wrap">
+                <div class="d-flex gap-2 flex-wrap">
                   <button
-                      class="btn btn-outline-primary btn-sm"
-                      :disabled="saving"
-                      @click="startEditing(match)">
-                    Editar
+                      class="btn btn-outline-dark btn-sm"
+                      type="button"
+                      @click="emit('open-match-details', match.id)">
+                    Ver detalle
                   </button>
-                  <button
-                      class="btn btn-outline-danger btn-sm"
-                      :disabled="saving"
-                      @click="deleteMatch(match.id)">
-                    Eliminar
-                  </button>
+
+                  <template v-if="isAdmin">
+                    <button
+                        class="btn btn-outline-primary btn-sm"
+                        :disabled="saving"
+                        @click="startEditing(match)">
+                      Editar
+                    </button>
+                    <button
+                        class="btn btn-outline-danger btn-sm"
+                        :disabled="saving"
+                        @click="deleteMatch(match.id)">
+                      Eliminar
+                    </button>
+                  </template>
                 </div>
               </div>
             </template>

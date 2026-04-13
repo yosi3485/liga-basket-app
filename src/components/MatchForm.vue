@@ -100,6 +100,16 @@ async function addMatch() {
     return
   }
 
+  if (teamAScore.value === teamBScore.value) {
+    errorMessage.value = 'El partido no puede terminar empatado.'
+    return
+  }
+
+  if (teamAScore.value < 7 && teamBScore.value < 7) {
+    errorMessage.value = 'El equipo ganador debe llegar al menos a 7 puntos.'
+    return
+  }
+
   if (!playedAt.value) {
     errorMessage.value = 'Selecciona la fecha del partido.'
     return

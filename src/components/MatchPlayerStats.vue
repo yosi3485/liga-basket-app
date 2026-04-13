@@ -2,19 +2,26 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
-import { formatDate } from '../utils/date'
+import { getMatchLabel } from '../utils/matches'
 
 type Match = {
   id: string
   team_a_id: string
   team_b_id: string
+  team_a_score: number
+  team_b_score: number
   played_at: string
+  created_at: string
 }
 
 type Player = {
   id: string
   name: string
   team_id: string
+}
+
+type MatchPlayerRow = {
+  player_id: string
 }
 
 type PlayerStatRow = {
@@ -25,10 +32,17 @@ type PlayerStatRow = {
 
 type PlayerStatsState = Record<string, { points: number; threes: number }>
 
+type TeamRow = {
+  id: string
+  name: string
+}
+
 const { isAdmin } = useAuth()
 
 const matches = ref<Match[]>([])
+const teams = ref<TeamRow[]>([])
 const players = ref<Player[]>([])
+const rosterPlayerIds = ref<string[]>([])
 const selectedMatchId = ref('')
 const stats = ref<PlayerStatsState>({})
 
@@ -44,12 +58,18 @@ async function loadData() {
 
   const [
     { data: matchesData, error: matchesError },
+    { data: teamsData, error: teamsError },
     { data: playersData, error: playersError }
   ] = await Promise.all([
     supabase
         .from('matches')
-        .select('id, team_a_id, team_b_id, played_at')
-        .order('played_at', { ascending: false }),
+        .select('id, team_a_id, team_b_id, team_a_score, team_b_score, played_at, created_at')
+        .order('played_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+    supabase
+        .from('teams')
+        .select('id, name')
+        .order('name', { ascending: true }),
     supabase
         .from('players')
         .select('id, name, team_id')
@@ -62,6 +82,13 @@ async function loadData() {
     matches.value = []
   } else {
     matches.value = matchesData ?? []
+  }
+
+  if (teamsError) {
+    errorMessage.value = teamsError.message
+    teams.value = []
+  } else {
+    teams.value = teamsData ?? []
   }
 
   if (playersError) {
@@ -78,15 +105,63 @@ const selectedMatch = computed(() => {
   return matches.value.find((match) => match.id === selectedMatchId.value) ?? null
 })
 
+const teamsMap = computed(() => {
+  return new Map(teams.value.map((team) => [team.id, team.name]))
+})
+
+const teamAName = computed(() => {
+  return selectedMatch.value
+      ? (teamsMap.value.get(selectedMatch.value.team_a_id) ?? 'Equipo A')
+      : 'Equipo A'
+})
+
+const teamBName = computed(() => {
+  return selectedMatch.value
+      ? (teamsMap.value.get(selectedMatch.value.team_b_id) ?? 'Equipo B')
+      : 'Equipo B'
+})
+
 const playersForMatch = computed(() => {
   if (!selectedMatch.value) return []
 
-  return players.value.filter(
-      (player) =>
-          player.team_id === selectedMatch.value?.team_a_id ||
-          player.team_id === selectedMatch.value?.team_b_id
+  return players.value.filter((player) =>
+      rosterPlayerIds.value.includes(player.id)
   )
 })
+
+const teamAPlayers = computed(() => {
+  if (!selectedMatch.value) return []
+
+  return playersForMatch.value
+      .filter((player) => player.team_id === selectedMatch.value?.team_a_id)
+      .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+const teamBPlayers = computed(() => {
+  if (!selectedMatch.value) return []
+
+  return playersForMatch.value
+      .filter((player) => player.team_id === selectedMatch.value?.team_b_id)
+      .sort((a, b) => a.name.localeCompare(b.name))
+})
+
+async function loadRosterForMatch() {
+  rosterPlayerIds.value = []
+
+  if (!selectedMatchId.value) return
+
+  const { data, error } = await supabase
+      .from('match_players')
+      .select('player_id')
+      .eq('match_id', selectedMatchId.value)
+
+  if (error) {
+    errorMessage.value = error.message
+    return
+  }
+
+  rosterPlayerIds.value = ((data as MatchPlayerRow[]) ?? []).map((row) => row.player_id)
+}
 
 async function loadStatsForMatch() {
   stats.value = {}
@@ -122,13 +197,43 @@ function updateStat(
     stats.value[playerId] = { points: 0, threes: 0 }
   }
 
+  if (value === '') {
+    stats.value[playerId][field] = 0
+    return
+  }
+
   const parsedValue = Number(value)
   stats.value[playerId][field] = Number.isNaN(parsedValue) ? 0 : parsedValue
 }
 
-function statValue(playerId: string, field: 'points' | 'threes') {
-  if (!stats.value[playerId]) return 0
-  return stats.value[playerId][field]
+function statInputValue(playerId: string, field: 'points' | 'threes') {
+  if (!stats.value[playerId]) return ''
+  const value = stats.value[playerId][field]
+  return value === 0 ? '' : String(value)
+}
+
+function validateStatsTotals() {
+  if (!selectedMatch.value) {
+    return 'No hay partido seleccionado.'
+  }
+
+  const teamAPoints = playersForMatch.value
+      .filter((player) => player.team_id === selectedMatch.value?.team_a_id)
+      .reduce((sum, player) => sum + (stats.value[player.id]?.points ?? 0), 0)
+
+  const teamBPoints = playersForMatch.value
+      .filter((player) => player.team_id === selectedMatch.value?.team_b_id)
+      .reduce((sum, player) => sum + (stats.value[player.id]?.points ?? 0), 0)
+
+  if (teamAPoints !== selectedMatch.value.team_a_score) {
+    return `La suma de puntos de ${teamAPoints} no coincide con el marcador de ${selectedMatch.value.team_a_score} para ${teamAName.value}.`
+  }
+
+  if (teamBPoints !== selectedMatch.value.team_b_score) {
+    return `La suma de puntos de ${teamBPoints} no coincide con el marcador de ${selectedMatch.value.team_b_score} para ${teamBName.value}.`
+  }
+
+  return ''
 }
 
 async function saveStats() {
@@ -137,6 +242,17 @@ async function saveStats() {
 
   if (!selectedMatchId.value) {
     errorMessage.value = 'Selecciona un partido.'
+    return
+  }
+
+  if (!rosterPlayerIds.value.length) {
+    errorMessage.value = 'Este partido no tiene roster asignado todavía.'
+    return
+  }
+
+  const validationError = validateStatsTotals()
+  if (validationError) {
+    errorMessage.value = validationError
     return
   }
 
@@ -165,7 +281,14 @@ async function saveStats() {
   saving.value = false
 }
 
+function matchLabel(match: Match) {
+  return getMatchLabel(match, matches.value)
+}
+
 watch(selectedMatchId, async () => {
+  errorMessage.value = ''
+  successMessage.value = ''
+  await loadRosterForMatch()
   await loadStatsForMatch()
 })
 
@@ -192,47 +315,87 @@ onMounted(async () => {
                 v-for="match in matches"
                 :key="match.id"
                 :value="match.id">
-              {{ formatDate(match.played_at) }}
+              {{ matchLabel(match) }}
             </option>
           </select>
         </div>
 
-        <div v-if="selectedMatchId && playersForMatch.length">
-          <div
-              v-for="player in playersForMatch"
-              :key="player.id"
-              class="row g-2 align-items-center mb-2">
-            <div class="col-12 col-md-4">
-              <span>{{ player.name }}</span>
-            </div>
+        <div v-if="selectedMatchId && !rosterPlayerIds.length" class="alert alert-warning" role="alert">
+          Este partido no tiene roster guardado. Primero marca los jugadores en
+          <strong>Roster partido</strong>.
+        </div>
 
-            <div class="col-6 col-md-4">
-              <input
-                  type="number"
-                  class="form-control"
-                  placeholder="Puntos"
-                  :value="statValue(player.id, 'points')"
-                  @input="updateStat(player.id, 'points', ($event.target as HTMLInputElement).value)" />
-            </div>
+        <div v-else-if="selectedMatchId && playersForMatch.length" class="row g-4">
+          <div class="col-12 col-xl-6">
+            <h3 class="h5 mb-3">{{ teamAName }}</h3>
 
-            <div class="col-6 col-md-4">
-              <input
-                  type="number"
-                  class="form-control"
-                  placeholder="3PT"
-                  :value="statValue(player.id, 'threes')"
-                  @input="updateStat(player.id, 'threes', ($event.target as HTMLInputElement).value)" />
+            <div
+                v-for="player in teamAPlayers"
+                :key="player.id"
+                class="row g-2 align-items-center mb-2">
+              <div class="col-12 col-md-4">
+                <span>{{ player.name }}</span>
+              </div>
+
+              <div class="col-6 col-md-4">
+                <input
+                    type="number"
+                    class="form-control"
+                    placeholder="Puntos"
+                    :value="statInputValue(player.id, 'points')"
+                    @input="updateStat(player.id, 'points', ($event.target as HTMLInputElement).value)" />
+              </div>
+
+              <div class="col-6 col-md-4">
+                <input
+                    type="number"
+                    class="form-control"
+                    placeholder="3PT"
+                    :value="statInputValue(player.id, 'threes')"
+                    @input="updateStat(player.id, 'threes', ($event.target as HTMLInputElement).value)" />
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12 col-xl-6">
+            <h3 class="h5 mb-3">{{ teamBName }}</h3>
+
+            <div
+                v-for="player in teamBPlayers"
+                :key="player.id"
+                class="row g-2 align-items-center mb-2">
+              <div class="col-12 col-md-4">
+                <span>{{ player.name }}</span>
+              </div>
+
+              <div class="col-6 col-md-4">
+                <input
+                    type="number"
+                    class="form-control"
+                    placeholder="Puntos"
+                    :value="statInputValue(player.id, 'points')"
+                    @input="updateStat(player.id, 'points', ($event.target as HTMLInputElement).value)" />
+              </div>
+
+              <div class="col-6 col-md-4">
+                <input
+                    type="number"
+                    class="form-control"
+                    placeholder="3PT"
+                    :value="statInputValue(player.id, 'threes')"
+                    @input="updateStat(player.id, 'threes', ($event.target as HTMLInputElement).value)" />
+              </div>
             </div>
           </div>
         </div>
 
         <p v-else-if="selectedMatchId" class="text-muted">
-          No hay jugadores activos para este partido.
+          No hay jugadores disponibles para este partido.
         </p>
 
         <button
             class="btn btn-primary mt-3"
-            :disabled="saving || !selectedMatchId"
+            :disabled="saving || !selectedMatchId || !rosterPlayerIds.length"
             @click="saveStats">
           {{ saving ? 'Guardando...' : 'Guardar estadísticas' }}
         </button>

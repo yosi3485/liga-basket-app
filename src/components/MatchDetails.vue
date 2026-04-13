@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { supabase } from '../lib/supabase'
-import { formatDate } from '../utils/date'
+import { getMatchLabel } from '../utils/matches'
+import { useAuth } from '../composables/useAuth'
 
 type TeamRow = {
   id: string
@@ -11,10 +12,12 @@ type TeamRow = {
 type MatchRow = {
   id: string
   played_at: string
+  created_at: string
   team_a_id: string
   team_b_id: string
   team_a_score: number
-  team_b_score: number
+  team_b_score: number,
+  status: 'in_progress' | 'finished'
 }
 
 type PlayerRow = {
@@ -30,6 +33,10 @@ type PlayerStatRow = {
   three_pointers: number
 }
 
+type MatchPlayerRow = {
+  player_id: string
+}
+
 type MatchPlayerDetail = {
   id: string
   name: string
@@ -39,15 +46,28 @@ type MatchPlayerDetail = {
   threes: number
 }
 
+const props = defineProps<{
+  initialMatchId?: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'match-deleted'): void
+}>()
+
+const { isAdmin } = useAuth()
+
 const teams = ref<TeamRow[]>([])
 const matches = ref<MatchRow[]>([])
 const players = ref<PlayerRow[]>([])
 const playerStats = ref<PlayerStatRow[]>([])
+const rosterPlayerIds = ref<string[]>([])
 
 const selectedMatchId = ref('')
 const loading = ref(false)
 const statsLoading = ref(false)
+const deleting = ref(false)
 const errorMessage = ref('')
+const successMessage = ref('')
 
 async function loadBaseData() {
   loading.value = true
@@ -62,8 +82,9 @@ async function loadBaseData() {
       supabase.from('teams').select('id, name').order('name', { ascending: true }),
       supabase
           .from('matches')
-          .select('id, played_at, team_a_id, team_b_id, team_a_score, team_b_score')
-          .order('played_at', { ascending: false }),
+          .select('id, played_at, created_at, team_a_id, team_b_id, team_a_score, team_b_score, status')
+          .order('played_at', { ascending: false })
+          .order('created_at', { ascending: false }),
       supabase
           .from('players')
           .select('id, name, jersey_number, team_id')
@@ -89,8 +110,9 @@ async function loadBaseData() {
   }
 }
 
-async function loadPlayerStats() {
+async function loadRosterAndStats() {
   playerStats.value = []
+  rosterPlayerIds.value = []
 
   if (!selectedMatchId.value) return
 
@@ -98,20 +120,75 @@ async function loadPlayerStats() {
   errorMessage.value = ''
 
   try {
-    const { data, error } = await supabase
-        .from('player_game_stats')
-        .select('player_id, points, three_pointers')
-        .eq('match_id', selectedMatchId.value)
+    const [
+      { data: rosterData, error: rosterError },
+      { data: statsData, error: statsError }
+    ] = await Promise.all([
+      supabase
+          .from('match_players')
+          .select('player_id')
+          .eq('match_id', selectedMatchId.value),
+      supabase
+          .from('player_game_stats')
+          .select('player_id, points, three_pointers')
+          .eq('match_id', selectedMatchId.value)
+    ])
 
-    if (error) throw error
+    if (rosterError) throw rosterError
+    if (statsError) throw statsError
 
-    playerStats.value = data ?? []
+    rosterPlayerIds.value = ((rosterData as MatchPlayerRow[]) ?? []).map((row) => row.player_id)
+    playerStats.value = statsData ?? []
   } catch (error) {
     errorMessage.value =
         error instanceof Error ? error.message : 'Error cargando estadísticas del partido'
   } finally {
     statsLoading.value = false
   }
+}
+
+async function deleteMatch() {
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  if (!selectedMatch.value) return
+
+  const confirmed = window.confirm(
+      '¿Seguro que quieres eliminar este partido? También se borrarán el roster y las estadísticas de jugadores de ese juego.'
+  )
+
+  if (!confirmed) return
+
+  deleting.value = true
+
+  const matchIdToDelete = selectedMatch.value.id
+
+  const { error } = await supabase
+      .from('matches')
+      .delete()
+      .eq('id', matchIdToDelete)
+
+  if (error) {
+    errorMessage.value = error.message
+    deleting.value = false
+    return
+  }
+
+  successMessage.value = 'Partido eliminado correctamente.'
+
+  await loadBaseData()
+
+  if (matches.value.length > 0) {
+    selectedMatchId.value = matches.value[0].id
+    await loadRosterAndStats()
+  } else {
+    selectedMatchId.value = ''
+    rosterPlayerIds.value = []
+    playerStats.value = []
+  }
+
+  deleting.value = false
+  emit('match-deleted')
 }
 
 const teamsMap = computed(() => {
@@ -148,11 +225,7 @@ const playersForMatch = computed<MatchPlayerDetail[]>(() => {
   )
 
   return players.value
-      .filter(
-          (player) =>
-              player.team_id === selectedMatch.value?.team_a_id ||
-              player.team_id === selectedMatch.value?.team_b_id
-      )
+      .filter((player) => rosterPlayerIds.value.includes(player.id))
       .map((player) => ({
         id: player.id,
         name: player.name,
@@ -179,24 +252,55 @@ const teamBPlayers = computed(() => {
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))
 })
 
+function matchLabel(match: MatchRow) {
+  return getMatchLabel(match, matches.value)
+}
+
 watch(selectedMatchId, async () => {
-  await loadPlayerStats()
+  successMessage.value = ''
+  await loadRosterAndStats()
 })
+
+watch(
+    () => props.initialMatchId,
+    async (newMatchId) => {
+      if (newMatchId && newMatchId !== selectedMatchId.value) {
+        selectedMatchId.value = newMatchId
+        await loadRosterAndStats()
+      }
+    }
+)
 
 onMounted(async () => {
   await loadBaseData()
-  await loadPlayerStats()
+
+  if (props.initialMatchId) {
+    selectedMatchId.value = props.initialMatchId
+  }
+
+  await loadRosterAndStats()
 })
 </script>
 
 <template>
   <section class="card shadow-sm">
     <div class="card-body">
-      <div class="mb-3">
-        <h2 class="h4 mb-1">Detalle del partido</h2>
-        <p class="text-muted mb-0">
-          Consulta marcador, fecha y estadísticas de jugadores por partido.
-        </p>
+      <div class="mb-3 d-flex justify-content-between align-items-start gap-3 flex-wrap">
+        <div>
+          <h2 class="h4 mb-1">Detalle del partido</h2>
+          <p class="text-muted mb-0">
+            Consulta marcador, roster y estadísticas del partido.
+          </p>
+        </div>
+
+        <button
+            v-if="isAdmin && selectedMatch"
+            type="button"
+            class="btn btn-outline-danger btn-sm"
+            :disabled="deleting"
+            @click="deleteMatch">
+          {{ deleting ? 'Eliminando...' : 'Eliminar partido' }}
+        </button>
       </div>
 
       <p v-if="loading" class="mb-0">Cargando partidos...</p>
@@ -218,17 +322,28 @@ onMounted(async () => {
                   v-for="match in matches"
                   :key="match.id"
                   :value="match.id">
-                {{ formatDate(match.played_at) }}
+                {{ matchLabel(match) }}
               </option>
             </select>
           </div>
+        </div>
+
+        <div v-if="successMessage" class="alert alert-success mb-4" role="alert">
+          {{ successMessage }}
         </div>
 
         <template v-if="selectedMatch">
           <div class="card border mb-4">
             <div class="card-body">
               <div class="small text-muted mb-2">
-                {{ formatDate(selectedMatch.played_at) }}
+                {{ matchLabel(selectedMatch) }}
+              </div>
+              <div class="mb-2">
+                <span
+                    class="badge"
+                    :class="selectedMatch.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+                  {{ selectedMatch.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+                </span>
               </div>
 
               <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
@@ -272,7 +387,7 @@ onMounted(async () => {
               </div>
 
               <p v-else class="text-muted mb-0">
-                No hay jugadores o estadísticas para este equipo.
+                No hay roster ni estadísticas para este equipo.
               </p>
             </div>
 
@@ -301,7 +416,7 @@ onMounted(async () => {
               </div>
 
               <p v-else class="text-muted mb-0">
-                No hay jugadores o estadísticas para este equipo.
+                No hay roster ni estadísticas para este equipo.
               </p>
             </div>
           </div>
