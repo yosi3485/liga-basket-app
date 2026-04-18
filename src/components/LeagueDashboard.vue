@@ -47,6 +47,13 @@ type PlayerStatRow = {
   three_pointers: number
 }
 
+type VoteRow = {
+  id: string
+  played_at: string
+  voter_player_id: string
+  voted_player_id: string
+}
+
 const props = defineProps<{
   refreshKey: number
 }>()
@@ -56,6 +63,8 @@ const baseStandings = ref<BaseStandingRow[]>([])
 const matches = ref<MatchRow[]>([])
 const players = ref<PlayerRow[]>([])
 const playerStats = ref<PlayerStatRow[]>([])
+const votes = ref<VoteRow[]>([])
+
 const loading = ref(false)
 const errorMessage = ref('')
 
@@ -69,17 +78,35 @@ async function loadData() {
       { data: baseData, error: baseError },
       { data: matchesData, error: matchesError },
       { data: playersData, error: playersError },
-      { data: statsData, error: statsError }
+      { data: statsData, error: statsError },
+      { data: votesData, error: votesError }
     ] = await Promise.all([
-      supabase.from('teams').select('id, name').order('name', { ascending: true }),
-      supabase.from('standings_base').select('team_id, base_played, base_won, base_lost'),
+      supabase
+          .from('teams')
+          .select('id, name')
+          .order('name', { ascending: true }),
+
+      supabase
+          .from('standings_base')
+          .select('team_id, base_played, base_won, base_lost'),
+
       supabase
           .from('matches')
           .select('id, team_a_id, team_b_id, team_a_score, team_b_score, played_at, created_at, status')
           .order('played_at', { ascending: false })
           .order('created_at', { ascending: false }),
-      supabase.from('players').select('id, name, team_id'),
-      supabase.from('player_game_stats').select('player_id, points, three_pointers')
+
+      supabase
+          .from('players')
+          .select('id, name, team_id'),
+
+      supabase
+          .from('player_game_stats')
+          .select('player_id, points, three_pointers'),
+
+      supabase
+          .from('match_mvp_votes')
+          .select('id, played_at, voter_player_id, voted_player_id')
     ])
 
     if (teamsError) throw teamsError
@@ -87,12 +114,14 @@ async function loadData() {
     if (matchesError) throw matchesError
     if (playersError) throw playersError
     if (statsError) throw statsError
+    if (votesError) throw votesError
 
     teams.value = teamsData ?? []
     baseStandings.value = baseData ?? []
     matches.value = matchesData ?? []
     players.value = playersData ?? []
     playerStats.value = statsData ?? []
+    votes.value = votesData ?? []
   } catch (error) {
     errorMessage.value =
         error instanceof Error ? error.message : 'Error cargando dashboard'
@@ -100,6 +129,18 @@ async function loadData() {
     loading.value = false
   }
 }
+
+const finishedMatches = computed(() => {
+  return matches.value.filter((match) => match.status === 'finished')
+})
+
+const teamNameMap = computed(() => {
+  return new Map(teams.value.map((team) => [team.id, team.name]))
+})
+
+const playerMap = computed(() => {
+  return new Map(players.value.map((player) => [player.id, player]))
+})
 
 const standings = computed<StandingRow[]>(() => {
   const tableMap = new Map<string, StandingRow>()
@@ -164,12 +205,11 @@ const latestMatch = computed(() => {
   if (!finishedMatches.value.length) return null
 
   const match = finishedMatches.value[0]
-  const teamMap = new Map(teams.value.map((team) => [team.id, team.name]))
 
   return {
     playedAt: match.played_at,
-    teamA: teamMap.get(match.team_a_id) ?? 'Equipo A',
-    teamB: teamMap.get(match.team_b_id) ?? 'Equipo B',
+    teamA: teamNameMap.value.get(match.team_a_id) ?? 'Equipo A',
+    teamB: teamNameMap.value.get(match.team_b_id) ?? 'Equipo B',
     scoreA: match.team_a_score,
     scoreB: match.team_b_score,
     status: match.status
@@ -177,11 +217,10 @@ const latestMatch = computed(() => {
 })
 
 const playerTotals = computed(() => {
-  const playerMap = new Map(players.value.map((player) => [player.id, player]))
   const totals = new Map<string, { name: string; points: number; threes: number }>()
 
   for (const stat of playerStats.value) {
-    const player = playerMap.get(stat.player_id)
+    const player = playerMap.value.get(stat.player_id)
     if (!player) continue
 
     if (!totals.has(player.id)) {
@@ -201,15 +240,63 @@ const playerTotals = computed(() => {
 })
 
 const topScorer = computed(() => {
-  return [...playerTotals.value].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))[0] ?? null
+  return [...playerTotals.value]
+      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))[0] ?? null
 })
 
 const topThreeShooter = computed(() => {
-  return [...playerTotals.value].sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
+  return [...playerTotals.value]
+      .sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
 })
 
-const finishedMatches = computed(() => {
-  return matches.value.filter((match) => match.status === 'finished')
+const latestFinishedDate = computed(() => {
+  return finishedMatches.value[0]?.played_at ?? ''
+})
+
+const latestJornadaMvp = computed(() => {
+  if (!latestFinishedDate.value) return null
+
+  const votesForDate = votes.value.filter((vote) => vote.played_at === latestFinishedDate.value)
+  if (!votesForDate.length) return null
+
+  const counts = new Map<string, number>()
+
+  for (const vote of votesForDate) {
+    counts.set(vote.voted_player_id, (counts.get(vote.voted_player_id) ?? 0) + 1)
+  }
+
+  const ranking = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  if (!ranking.length) return null
+
+  const topVotes = ranking[0][1]
+  const winners = ranking.filter((entry) => entry[1] === topVotes)
+
+  if (winners.length === 1) {
+    const playerId = winners[0][0]
+    const player = playerMap.value.get(playerId)
+
+    return {
+      type: 'single' as const,
+      playedAt: latestFinishedDate.value,
+      playerName: player?.name ?? 'Jugador',
+      teamName: player ? (teamNameMap.value.get(player.team_id) ?? 'Sin equipo') : 'Sin equipo',
+      votes: topVotes
+    }
+  }
+
+  return {
+    type: 'tie' as const,
+    playedAt: latestFinishedDate.value,
+    winners: winners.map(([playerId, totalVotes]) => {
+      const player = playerMap.value.get(playerId)
+
+      return {
+        playerName: player?.name ?? 'Jugador',
+        teamName: player ? (teamNameMap.value.get(player.team_id) ?? 'Sin equipo') : 'Sin equipo',
+        votes: totalVotes
+      }
+    })
+  }
 })
 
 onMounted(loadData)
@@ -310,16 +397,54 @@ watch(
             </div>
 
             <div class="mt-3">
-    <span
-        class="badge"
-        :class="latestMatch.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
-      <i class="fa-solid fa-circle me-1"></i>
-      {{ latestMatch.status === 'finished' ? 'Finalizado' : 'En progreso' }}
-    </span>
+              <span
+                  class="badge"
+                  :class="latestMatch.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+                <i class="fa-solid fa-circle me-1"></i>
+                {{ latestMatch.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+              </span>
             </div>
           </div>
           <div v-else class="card-body text-muted">
             No hay partidos registrados todavía.
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="card shadow-sm border-warning h-100">
+          <div class="card-header">
+            <i class="fa-solid fa-star me-2 text-warning"></i>
+            MVP de la jornada
+          </div>
+
+          <div v-if="latestJornadaMvp" class="card-body">
+            <div class="small text-muted mb-2">
+              {{ formatDate(latestJornadaMvp.playedAt) }}
+            </div>
+
+            <template v-if="latestJornadaMvp.type === 'single'">
+              <div class="fs-4 fw-bold">🏆 {{ latestJornadaMvp.playerName }}</div>
+              <div class="text-muted mt-1">
+                {{ latestJornadaMvp.teamName }}
+              </div>
+              <div class="small mt-2">
+                {{ latestJornadaMvp.votes }} voto(s)
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="fw-bold mb-2">🤝 Empate en el MVP</div>
+              <ul class="mb-0">
+                <li v-for="winner in latestJornadaMvp.winners" :key="winner.playerName">
+                  {{ winner.playerName }} · {{ winner.teamName }} · {{ winner.votes }} voto(s)
+                </li>
+              </ul>
+            </template>
+          </div>
+
+          <div v-else class="card-body text-muted">
+            Todavía no hay votos registrados para la jornada más reciente.
           </div>
         </div>
       </div>

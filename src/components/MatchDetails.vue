@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { supabase } from '../lib/supabase'
 import { getMatchLabel } from '../utils/matches'
+import EditMatchAdmin from './EditMatchAdmin.vue'
 import { useAuth } from '../composables/useAuth'
 
 type TeamRow = {
@@ -55,6 +56,14 @@ const emit = defineEmits<{
 }>()
 
 const { isAdmin } = useAuth()
+
+const isEditing = ref(false)
+
+function handleMatchSaved() {
+  isEditing.value = false
+  loadBaseData()
+  emit('match-deleted')
+}
 
 const teams = ref<TeamRow[]>([])
 const matches = ref<MatchRow[]>([])
@@ -301,6 +310,19 @@ onMounted(async () => {
             @click="deleteMatch">
           {{ deleting ? 'Eliminando...' : 'Eliminar partido' }}
         </button>
+        <button
+            v-if="isAdmin && selectedMatch"
+            type="button"
+            class="btn btn-outline-primary btn-sm"
+            @click="isEditing = !isEditing">
+          {{ isEditing ? 'Cerrar editor' : 'Editar partido' }}
+        </button>
+        <div v-if="isAdmin && isEditing && selectedMatch" class="mt-4">
+          <EditMatchAdmin
+              :match-id="selectedMatch.id"
+              @saved="handleMatchSaved"
+              @cancel="isEditing = false" />
+        </div>
       </div>
 
       <p v-if="loading" class="mb-0">Cargando partidos...</p>

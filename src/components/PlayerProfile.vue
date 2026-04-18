@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { supabase } from '../lib/supabase'
 import { formatDate } from '../utils/date'
+import { getMatchLabel } from '../utils/matches'
 
 type TeamRow = {
   id: string
@@ -30,7 +31,7 @@ type MatchRow = {
 type MatchPlayerRow = {
   match_id: string
   player_id: string
-  team_id: string
+  team_id: string | null
 }
 
 type PlayerStatRow = {
@@ -40,9 +41,18 @@ type PlayerStatRow = {
   three_pointers: number
 }
 
+type VoteRow = {
+  id: string
+  played_at: string
+  voter_player_id: string
+  voted_player_id: string
+}
+
 type PlayerMatchHistoryRow = {
   matchId: string
   playedAt: string
+  createdAt: string
+  matchLabel: string
   teamName: string
   opponentName: string
   teamScore: number
@@ -53,13 +63,20 @@ type PlayerMatchHistoryRow = {
   status: 'in_progress' | 'finished'
 }
 
+type PlayerMvpWinRow = {
+  playedAt: string
+  votes: number
+}
+
 const teams = ref<TeamRow[]>([])
 const players = ref<PlayerRow[]>([])
 const matches = ref<MatchRow[]>([])
 const matchPlayers = ref<MatchPlayerRow[]>([])
 const playerStats = ref<PlayerStatRow[]>([])
+const votes = ref<VoteRow[]>([])
 
 const selectedPlayerId = ref('')
+const selectedDate = ref('')
 const loading = ref(false)
 const errorMessage = ref('')
 
@@ -73,7 +90,8 @@ async function loadData() {
       { data: playersData, error: playersError },
       { data: matchesData, error: matchesError },
       { data: matchPlayersData, error: matchPlayersError },
-      { data: playerStatsData, error: playerStatsError }
+      { data: playerStatsData, error: playerStatsError },
+      { data: votesData, error: votesError }
     ] = await Promise.all([
       supabase
           .from('teams')
@@ -97,7 +115,11 @@ async function loadData() {
 
       supabase
           .from('player_game_stats')
-          .select('match_id, player_id, points, three_pointers')
+          .select('match_id, player_id, points, three_pointers'),
+
+      supabase
+          .from('match_mvp_votes')
+          .select('id, played_at, voter_player_id, voted_player_id')
     ])
 
     if (teamsError) throw teamsError
@@ -105,12 +127,14 @@ async function loadData() {
     if (matchesError) throw matchesError
     if (matchPlayersError) throw matchPlayersError
     if (playerStatsError) throw playerStatsError
+    if (votesError) throw votesError
 
     teams.value = teamsData ?? []
     players.value = playersData ?? []
     matches.value = matchesData ?? []
     matchPlayers.value = matchPlayersData ?? []
     playerStats.value = playerStatsData ?? []
+    votes.value = votesData ?? []
 
     if (!selectedPlayerId.value && players.value.length > 0) {
       selectedPlayerId.value = players.value[0].id
@@ -160,7 +184,7 @@ const selectedPlayerHistory = computed<PlayerMatchHistoryRow[]>(() => {
         const rosterEntry = rosterMap.get(match.id)
         const statEntry = statsMap.get(match.id)
 
-        const playerTeamId = rosterEntry?.team_id
+        const playerTeamId = rosterEntry?.team_id ?? selectedPlayer.value?.team_id ?? ''
         const playerTeamName = playerTeamId
             ? (teamsMap.value.get(playerTeamId) ?? 'Equipo')
             : 'Equipo'
@@ -184,6 +208,8 @@ const selectedPlayerHistory = computed<PlayerMatchHistoryRow[]>(() => {
         return {
           matchId: match.id,
           playedAt: match.played_at,
+          createdAt: match.created_at,
+          matchLabel: getMatchLabel(match, matches.value),
           teamName: playerTeamName,
           opponentName: opponentTeamName,
           teamScore: playerTeamScore,
@@ -198,8 +224,21 @@ const selectedPlayerHistory = computed<PlayerMatchHistoryRow[]>(() => {
         if (a.playedAt !== b.playedAt) {
           return b.playedAt.localeCompare(a.playedAt)
         }
-        return b.matchId.localeCompare(a.matchId)
+        return b.createdAt.localeCompare(a.createdAt)
       })
+})
+
+const availableDates = computed(() => {
+  return [...new Set(selectedPlayerHistory.value.map((row) => row.playedAt))]
+      .sort((a, b) => b.localeCompare(a))
+})
+
+const historyForSelectedDate = computed(() => {
+  if (!selectedDate.value) return []
+
+  return selectedPlayerHistory.value
+      .filter((row) => row.playedAt === selectedDate.value)
+      .sort((a, b) => a.matchLabel.localeCompare(b.matchLabel))
 })
 
 const totalGames = computed(() => selectedPlayerHistory.value.length)
@@ -224,12 +263,49 @@ const totalThrees = computed(() => {
   return selectedPlayerHistory.value.reduce((sum, row) => sum + row.threes, 0)
 })
 
-onMounted(() => {
-  loadData()
+const playerMvpWins = computed<PlayerMvpWinRow[]>(() => {
+  if (!selectedPlayerId.value) return []
+
+  const distinctDates = [...new Set(votes.value.map((vote) => vote.played_at))]
+  const wins: PlayerMvpWinRow[] = []
+
+  for (const date of distinctDates) {
+    const votesForDate = votes.value.filter((vote) => vote.played_at === date)
+    if (!votesForDate.length) continue
+
+    const counts = new Map<string, number>()
+
+    for (const vote of votesForDate) {
+      counts.set(vote.voted_player_id, (counts.get(vote.voted_player_id) ?? 0) + 1)
+    }
+
+    const ranking = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+    if (!ranking.length) continue
+
+    const topVotes = ranking[0][1]
+    const topPlayers = ranking.filter((entry) => entry[1] === topVotes)
+
+    if (topPlayers.length === 1 && topPlayers[0][0] === selectedPlayerId.value) {
+      wins.push({
+        playedAt: date,
+        votes: topVotes
+      })
+    }
+  }
+
+  return wins.sort((a, b) => b.playedAt.localeCompare(a.playedAt))
 })
+
+const totalMvpWins = computed(() => playerMvpWins.value.length)
 
 watch(selectedPlayerId, () => {
   errorMessage.value = ''
+  selectedDate.value = availableDates.value[0] ?? ''
+})
+
+onMounted(async () => {
+  await loadData()
+  selectedDate.value = availableDates.value[0] ?? ''
 })
 </script>
 
@@ -239,7 +315,7 @@ watch(selectedPlayerId, () => {
       <div class="mb-3">
         <h2 class="h4 mb-1">Perfil del jugador</h2>
         <p class="text-muted mb-0">
-          Muestra solo los partidos en los que el jugador realmente participó.
+          Muestra partidos reales jugados y jornadas donde ganó el MVP.
         </p>
       </div>
 
@@ -260,6 +336,19 @@ watch(selectedPlayerId, () => {
                   :key="player.id"
                   :value="player.id">
                 {{ player.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="col-12 col-lg-6">
+            <label class="form-label">Jornada</label>
+            <select v-model="selectedDate" class="form-select">
+              <option value="">Selecciona una jornada</option>
+              <option
+                  v-for="date in availableDates"
+                  :key="date"
+                  :value="date">
+                {{ formatDate(date) }} · Jornada
               </option>
             </select>
           </div>
@@ -304,54 +393,68 @@ watch(selectedPlayerId, () => {
                 </div>
               </div>
             </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-warning-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-muted mb-1">MVPs ganados</div>
+                  <div class="fw-bold">🏆 {{ totalMvpWins }}</div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div v-if="selectedPlayerHistory.length" class="table-responsive">
-            <table class="table table-striped align-middle mb-0">
-              <thead class="table-light">
-              <tr>
-                <th>Fecha</th>
-                <th>Partido</th>
-                <th>Resultado</th>
-                <th>Puntos</th>
-                <th>3PT</th>
-                <th>Estado</th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr v-for="row in selectedPlayerHistory" :key="row.matchId">
-                <td>{{ formatDate(row.playedAt) }}</td>
-                <td>
-                  <span class="fw-semibold">{{ row.teamName }}</span>
-                  <span class="text-muted"> vs </span>
-                  <span>{{ row.opponentName }}</span>
-                  <div class="small text-muted">
-                    {{ row.teamScore }} - {{ row.opponentScore }}
-                  </div>
-                </td>
-                <td>
-                    <span
-                        class="badge"
-                        :class="row.result === 'W' ? 'text-bg-success' : 'text-bg-secondary'">
-                      {{ row.result === 'W' ? 'Victoria' : 'Derrota' }}
-                    </span>
-                </td>
-                <td>{{ row.points }}</td>
-                <td>{{ row.threes }}</td>
-                <td>
-                    <span
-                        class="badge"
-                        :class="row.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
-                      {{ row.status === 'finished' ? 'Finalizado' : 'En progreso' }}
-                    </span>
-                </td>
-              </tr>
-              </tbody>
-            </table>
+          <div v-if="playerMvpWins.length" class="card border-warning mb-4">
+            <div class="card-body">
+              <h3 class="h5 mb-3">MVPs ganados por jornada</h3>
+
+              <ul class="mb-0">
+                <li v-for="win in playerMvpWins" :key="win.playedAt">
+                  {{ formatDate(win.playedAt) }} · {{ win.votes }} voto(s)
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div v-if="selectedDate && historyForSelectedDate.length" class="card border mb-4">
+            <div class="card-body">
+              <h3 class="h5 mb-3">
+                {{ formatDate(selectedDate) }} · Jornada
+              </h3>
+
+              <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0">
+                  <thead class="table-light">
+                  <tr>
+                    <th>Partido</th>
+                    <th>Rival</th>
+                    <th>Resultado</th>
+                    <th>Puntos</th>
+                    <th>3PT</th>
+                  </tr>
+                  </thead>
+                  <tbody>
+                  <tr v-for="row in historyForSelectedDate" :key="row.matchId">
+                    <td class="fw-semibold">{{ row.matchLabel }}</td>
+                    <td>{{ row.opponentName }}</td>
+                    <td>
+                        <span
+                            class="badge"
+                            :class="row.result === 'W' ? 'text-bg-success' : 'text-bg-secondary'">
+                          {{ row.teamScore }} - {{ row.opponentScore }}
+                        </span>
+                    </td>
+                    <td>{{ row.points }}</td>
+                    <td>{{ row.threes }}</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
           <p v-else class="text-muted mb-0">
-            Este jugador todavía no tiene partidos registrados en los que haya participado.
+            No hay partidos registrados para este jugador en la jornada seleccionada.
           </p>
         </template>
       </template>
