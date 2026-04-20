@@ -275,6 +275,45 @@ const latestJornadaTopThreeShooter = computed(() => {
       .sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
 })
 
+const jornadaPlayerRecords = computed(() => {
+  const jornadaMap = new Map<string, { name: string; points: number; threes: number; playedAt: string }>()
+
+  for (const stat of playerStats.value) {
+    const match = matches.value.find((item) => item.id === stat.match_id)
+    if (!match) continue
+
+    const player = playerMap.value.get(stat.player_id)
+    if (!player) continue
+
+    const key = `${match.played_at}-${stat.player_id}`
+
+    if (!jornadaMap.has(key)) {
+      jornadaMap.set(key, {
+        name: player.name,
+        points: 0,
+        threes: 0,
+        playedAt: match.played_at
+      })
+    }
+
+    const current = jornadaMap.get(key)!
+    current.points += stat.points ?? 0
+    current.threes += stat.three_pointers ?? 0
+  }
+
+  return Array.from(jornadaMap.values())
+})
+
+const bestPointsInJornada = computed(() => {
+  return [...jornadaPlayerRecords.value]
+      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))[0] ?? null
+})
+
+const bestThreesInJornada = computed(() => {
+  return [...jornadaPlayerRecords.value]
+      .sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
+})
+
 const latestJornadaWinner = computed(() => {
   if (!latestJornadaMatchesFinishedOnly.value.length) return null
 
@@ -400,8 +439,41 @@ watch(
       <div class="col-12 col-md-6 col-xl-4">
         <div class="card shadow-sm h-100">
           <div class="card-header">
+            <i class="fa-solid fa-medal me-2 text-success"></i>
+            Equipo ganador última jornada
+          </div>
+          <div class="card-body">
+            <template v-if="latestJornadaWinner?.type === 'single'">
+              <div class="fs-4 fw-bold">{{ latestJornadaWinner.teamName }}</div>
+              <div class="display-6 fw-bold text-success mt-2">
+                {{ latestJornadaWinner.wins }}
+              </div>
+              <div class="small text-body-secondary">victoria(s) en la jornada</div>
+            </template>
+
+            <template v-else-if="latestJornadaWinner?.type === 'tie'">
+              <div class="fw-bold mb-2">Empate en la jornada</div>
+              <ul class="mb-0">
+                <li v-for="team in latestJornadaWinner.teams" :key="team">
+                  {{ team }}
+                </li>
+              </ul>
+            </template>
+
+            <template v-else>
+              <div class="text-body-secondary">
+                No hay suficiente información para determinar el ganador de la última jornada finalizada.
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
             <i class="fa-solid fa-clock-rotate-left me-2 text-danger"></i>
-            Último partido finalizado
+            Último partido
           </div>
           <div class="card-body" v-if="latestMatch">
             <div class="small text-body-secondary mb-2">
@@ -483,7 +555,6 @@ watch(
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ topScorer?.name ?? 'N/A' }}</div>
-            <div class="small text-body-secondary mt-1">Todos los partidos con stats guardados</div>
             <div class="display-6 fw-bold text-primary mt-2">
               {{ topScorer?.points ?? 0 }}
             </div>
@@ -499,7 +570,6 @@ watch(
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ topThreeShooter?.name ?? 'N/A' }}</div>
-            <div class="small text-body-secondary mt-1">Todos los partidos con stats guardados</div>
             <div class="display-6 fw-bold text-danger mt-2">
               {{ topThreeShooter?.threes ?? 0 }}
             </div>
@@ -515,7 +585,6 @@ watch(
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ latestJornadaTopScorer?.name ?? 'N/A' }}</div>
-            <div class="small text-body-secondary mt-1">Incluye partidos en progreso de la fecha más reciente</div>
             <div class="display-6 fw-bold text-info mt-2">
               {{ latestJornadaTopScorer?.points ?? 0 }}
             </div>
@@ -531,7 +600,6 @@ watch(
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ latestJornadaTopThreeShooter?.name ?? 'N/A' }}</div>
-            <div class="small text-body-secondary mt-1">Incluye partidos en progreso de la fecha más reciente</div>
             <div class="display-6 fw-bold text-warning mt-2">
               {{ latestJornadaTopThreeShooter?.threes ?? 0 }}
             </div>
@@ -542,33 +610,35 @@ watch(
       <div class="col-12 col-md-6 col-xl-4">
         <div class="card shadow-sm h-100">
           <div class="card-header">
-            <i class="fa-solid fa-medal me-2 text-success"></i>
-            Equipo ganador última jornada finalizada
+            <i class="fa-solid fa-trophy me-2 text-primary"></i>
+            Récord de puntos en una jornada
           </div>
           <div class="card-body">
-            <template v-if="latestJornadaWinner?.type === 'single'">
-              <div class="fs-4 fw-bold">{{ latestJornadaWinner.teamName }}</div>
-              <div class="small text-body-secondary mt-1">Equipo ganador de la última jornada finalizada</div>
-              <div class="display-6 fw-bold text-success mt-2">
-                {{ latestJornadaWinner.wins }}
-              </div>
-              <div class="small text-body-secondary">victoria(s) en la jornada</div>
-            </template>
+            <div class="fs-5 fw-bold">{{ bestPointsInJornada?.name ?? 'N/A' }}</div>
+            <div class="display-6 fw-bold text-primary mt-2">
+              {{ bestPointsInJornada?.points ?? 0 }}
+            </div>
+            <div class="small text-body-secondary mt-1">
+              {{ bestPointsInJornada ? formatDate(bestPointsInJornada.playedAt) : 'Sin jornada registrada' }}
+            </div>
+          </div>
+        </div>
+      </div>
 
-            <template v-else-if="latestJornadaWinner?.type === 'tie'">
-              <div class="fw-bold mb-2">Empate en la jornada</div>
-              <ul class="mb-0">
-                <li v-for="team in latestJornadaWinner.teams" :key="team">
-                  {{ team }}
-                </li>
-              </ul>
-            </template>
-
-            <template v-else>
-              <div class="text-body-secondary">
-                No hay suficiente información para determinar el ganador de la última jornada finalizada.
-              </div>
-            </template>
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <i class="fa-solid fa-bolt me-2 text-warning"></i>
+            Récord de triples en una jornada
+          </div>
+          <div class="card-body">
+            <div class="fs-5 fw-bold">{{ bestThreesInJornada?.name ?? 'N/A' }}</div>
+            <div class="small text-body-secondary mt-1">
+              {{ bestThreesInJornada ? formatDate(bestThreesInJornada.playedAt) : 'Sin jornada registrada' }}
+            </div>
+            <div class="display-6 fw-bold text-warning mt-2">
+              {{ bestThreesInJornada?.threes ?? 0 }}
+            </div>
           </div>
         </div>
       </div>
