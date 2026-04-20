@@ -633,11 +633,11 @@ watch(
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ bestThreesInJornada?.name ?? 'N/A' }}</div>
-            <div class="small text-body-secondary mt-1">
-              {{ bestThreesInJornada ? formatDate(bestThreesInJornada.playedAt) : 'Sin jornada registrada' }}
-            </div>
             <div class="display-6 fw-bold text-warning mt-2">
               {{ bestThreesInJornada?.threes ?? 0 }}
+            </div>
+            <div class="small text-body-secondary mt-1">
+              {{ bestThreesInJornada ? formatDate(bestThreesInJornada.playedAt) : 'Sin jornada registrada' }}
             </div>
           </div>
         </div>
