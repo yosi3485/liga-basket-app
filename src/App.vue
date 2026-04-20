@@ -12,7 +12,6 @@ import PlayersManager from './components/PlayersManager.vue'
 import PlayerUsersManager from './components/PlayerUsersManager.vue'
 import TableView from './components/TableView.vue'
 import TeamsManager from './components/TeamsManager.vue'
-import MvpVoteReminder from './components/MvpVoteReminder.vue'
 import { useAuth } from './composables/useAuth'
 
 type AppTab =
@@ -28,6 +27,12 @@ type AppTab =
     | 'players'
     | 'player_users'
 
+type NavItem = {
+  id: AppTab
+  label: string
+  adminOnly?: boolean
+}
+
 const matchesRefreshKey = ref(0)
 const teamsRefreshKey = ref(0)
 const activeTab = ref<AppTab>('home')
@@ -35,27 +40,30 @@ const selectedMatchDetailsId = ref('')
 
 const { isAdmin } = useAuth()
 
-const publicTabs = computed<AppTab[]>(() => [
-  'home',
-  'table_view',
-  'match_days',
-  'match_details',
-  'leaderboard',
-  'player_profile',
-  'mvp_vote'
+const navItems = computed<NavItem[]>(() => [
+  { id: 'home', label: 'Home' },
+  { id: 'table_view', label: 'Tabla' },
+  { id: 'match_days', label: 'Jornadas' },
+  { id: 'match_details', label: 'Detalle partido' },
+  { id: 'leaderboard', label: 'Leaderboard' },
+  { id: 'player_profile', label: 'Perfil jugador' },
+  { id: 'mvp_vote', label: 'MVP jornada' },
+  { id: 'new_match_flow', label: 'Nuevo partido', adminOnly: true },
+  { id: 'teams', label: 'Equipos admin', adminOnly: true },
+  { id: 'players', label: 'Jugadores', adminOnly: true },
+  { id: 'player_users', label: 'Usuarios jugadores', adminOnly: true }
 ])
 
-const adminTabs = computed<AppTab[]>(() => [
-  'new_match_flow',
-  'teams',
-  'players',
-  'player_users'
-])
+const visibleNavItems = computed(() => {
+  return navItems.value.filter((item) => !item.adminOnly || isAdmin.value)
+})
 
 const allowedTabs = computed<AppTab[]>(() => {
-  return isAdmin.value
-      ? [...publicTabs.value, ...adminTabs.value]
-      : [...publicTabs.value]
+  return visibleNavItems.value.map((item) => item.id)
+})
+
+const activeTabLabel = computed(() => {
+  return visibleNavItems.value.find((item) => item.id === activeTab.value)?.label ?? 'Secciones'
 })
 
 function handleMatchesChanged() {
@@ -77,30 +85,8 @@ function handleFlowCompleted(matchId: string) {
   activeTab.value = 'match_details'
 }
 
-function handleGoToMvpVote() {
-  activeTab.value = 'mvp_vote'
-}
-
-function tabLabel(tab: AppTab) {
-  return (
-      {
-        home: 'Home',
-        table_view: 'Tabla',
-        leaderboard: 'Leaderboard',
-        match_days: 'Jornadas',
-        match_details: 'Detalle partido',
-        player_profile: 'Perfil jugador',
-        mvp_vote: 'MVP jornada',
-        new_match_flow: 'Nuevo partido',
-        teams: 'Equipos admin',
-        players: 'Jugadores',
-        player_users: 'Usuarios jugadores'
-      }[tab] ?? 'Navegación'
-  )
-}
-
-function isTabVisible(tab: AppTab) {
-  return allowedTabs.value.includes(tab)
+function goToTab(tab: AppTab) {
+  activeTab.value = tab
 }
 
 onMounted(() => {
@@ -119,7 +105,7 @@ watch(activeTab, (newTab) => {
 })
 
 watch(isAdmin, (newIsAdmin) => {
-  if (!newIsAdmin && !publicTabs.value.includes(activeTab.value)) {
+  if (!newIsAdmin && !allowedTabs.value.includes(activeTab.value)) {
     activeTab.value = 'home'
   }
 })
@@ -150,71 +136,62 @@ watch(isAdmin, (newIsAdmin) => {
 
     <AuthPanel />
 
-    <MvpVoteReminder @go-to-mvp="handleGoToMvpVote" />
-
     <nav class="mb-4">
       <div class="d-block d-md-none">
-        <div class="dropdown">
-          <button
-              class="btn btn-dark dropdown-toggle w-100"
-              type="button"
-              data-bs-toggle="dropdown"
-              aria-expanded="false">
-            {{ tabLabel(activeTab) }}
-          </button>
+        <button
+            class="btn btn-dark w-100 d-flex justify-content-between align-items-center"
+            type="button"
+            data-bs-toggle="offcanvas"
+            data-bs-target="#mobile-nav-offcanvas"
+            aria-controls="mobile-nav-offcanvas">
+          <span>{{ activeTabLabel }}</span>
+          <i class="fa-solid fa-bars"></i>
+        </button>
 
-          <ul class="dropdown-menu w-100">
-            <li v-if="isTabVisible('home')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'home'">Home</button>
-            </li>
-            <li v-if="isTabVisible('table_view')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'table_view'">Tabla</button>
-            </li>
-            <li v-if="isTabVisible('match_days')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'match_days'">Jornadas</button>
-            </li>
-            <li v-if="isTabVisible('match_details')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'match_details'">Detalle partido</button>
-            </li>
-            <li v-if="isTabVisible('leaderboard')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'leaderboard'">Leaderboard</button>
-            </li>
-            <li v-if="isTabVisible('player_profile')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'player_profile'">Perfil jugador</button>
-            </li>
-            <li v-if="isTabVisible('mvp_vote')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'mvp_vote'">MVP jornada</button>
-            </li>
+        <div
+            id="mobile-nav-offcanvas"
+            class="offcanvas offcanvas-bottom"
+            tabindex="-1"
+            aria-labelledby="mobile-nav-offcanvas-label"
+            style="height: auto; max-height: 80vh;">
+          <div class="offcanvas-header">
+            <h5 id="mobile-nav-offcanvas-label" class="offcanvas-title">
+              Ir a sección
+            </h5>
+            <button
+                type="button"
+                class="btn-close"
+                data-bs-dismiss="offcanvas"
+                aria-label="Close"></button>
+          </div>
 
-            <li v-if="isTabVisible('new_match_flow')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'new_match_flow'">Nuevo partido</button>
-            </li>
-            <li v-if="isTabVisible('teams')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'teams'">Equipos admin</button>
-            </li>
-            <li v-if="isTabVisible('players')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'players'">Jugadores</button>
-            </li>
-            <li v-if="isTabVisible('player_users')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'player_users'">Usuarios jugadores</button>
-            </li>
-          </ul>
+          <div class="offcanvas-body">
+            <div class="list-group">
+              <button
+                  v-for="item in visibleNavItems"
+                  :key="item.id"
+                  type="button"
+                  class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                  :class="activeTab === item.id ? 'bg-dark text-white border-dark' : ''"
+                  data-bs-dismiss="offcanvas"
+                  @click="goToTab(item.id)">
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       <div class="d-none d-md-flex gap-2 flex-wrap">
-        <button v-if="isTabVisible('home')" type="button" class="btn" :class="activeTab === 'home' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'home'">Home</button>
-        <button v-if="isTabVisible('table_view')" type="button" class="btn" :class="activeTab === 'table_view' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'table_view'">Tabla</button>
-        <button v-if="isTabVisible('match_days')" type="button" class="btn" :class="activeTab === 'match_days' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'match_days'">Jornadas</button>
-        <button v-if="isTabVisible('match_details')" type="button" class="btn" :class="activeTab === 'match_details' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'match_details'">Detalle partido</button>
-        <button v-if="isTabVisible('leaderboard')" type="button" class="btn" :class="activeTab === 'leaderboard' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'leaderboard'">Leaderboard</button>
-        <button v-if="isTabVisible('player_profile')" type="button" class="btn" :class="activeTab === 'player_profile' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'player_profile'">Perfil jugador</button>
-        <button v-if="isTabVisible('mvp_vote')" type="button" class="btn" :class="activeTab === 'mvp_vote' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'mvp_vote'">MVP jornada</button>
-
-        <button v-if="isTabVisible('new_match_flow')" type="button" class="btn" :class="activeTab === 'new_match_flow' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'new_match_flow'">Nuevo partido</button>
-        <button v-if="isTabVisible('teams')" type="button" class="btn" :class="activeTab === 'teams' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'teams'">Equipos admin</button>
-        <button v-if="isTabVisible('players')" type="button" class="btn" :class="activeTab === 'players' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'players'">Jugadores</button>
-        <button v-if="isTabVisible('player_users')" type="button" class="btn" :class="activeTab === 'player_users' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'player_users'">Usuarios jugadores</button>
+        <button
+            v-for="item in visibleNavItems"
+            :key="item.id"
+            type="button"
+            class="btn"
+            :class="activeTab === item.id ? 'btn-dark' : 'btn-outline-dark'"
+            @click="activeTab = item.id">
+          {{ item.label }}
+        </button>
       </div>
     </nav>
 
