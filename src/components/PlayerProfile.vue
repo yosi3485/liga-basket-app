@@ -93,33 +93,16 @@ async function loadData() {
       { data: playerStatsData, error: playerStatsError },
       { data: votesData, error: votesError }
     ] = await Promise.all([
-      supabase
-          .from('teams')
-          .select('id, name')
-          .order('name', { ascending: true }),
-
-      supabase
-          .from('players')
-          .select('id, name, team_id, jersey_number, is_active')
-          .order('name', { ascending: true }),
-
+      supabase.from('teams').select('id, name').order('name', { ascending: true }),
+      supabase.from('players').select('id, name, team_id, jersey_number, is_active').order('name', { ascending: true }),
       supabase
           .from('matches')
           .select('id, played_at, created_at, team_a_id, team_b_id, team_a_score, team_b_score, status')
           .order('played_at', { ascending: false })
           .order('created_at', { ascending: false }),
-
-      supabase
-          .from('match_players')
-          .select('match_id, player_id, team_id'),
-
-      supabase
-          .from('player_game_stats')
-          .select('match_id, player_id, points, three_pointers'),
-
-      supabase
-          .from('match_mvp_votes')
-          .select('id, played_at, voter_player_id, voted_player_id')
+      supabase.from('match_players').select('match_id, player_id, team_id'),
+      supabase.from('player_game_stats').select('match_id, player_id, points, three_pointers'),
+      supabase.from('match_mvp_votes').select('id, played_at, voter_player_id, voted_player_id')
     ])
 
     if (teamsError) throw teamsError
@@ -157,7 +140,6 @@ const selectedPlayer = computed(() => {
 
 const selectedPlayerMatchEntries = computed(() => {
   if (!selectedPlayerId.value) return []
-
   return matchPlayers.value.filter((row) => row.player_id === selectedPlayerId.value)
 })
 
@@ -185,9 +167,7 @@ const selectedPlayerHistory = computed<PlayerMatchHistoryRow[]>(() => {
         const statEntry = statsMap.get(match.id)
 
         const playerTeamId = rosterEntry?.team_id ?? selectedPlayer.value?.team_id ?? ''
-        const playerTeamName = playerTeamId
-            ? (teamsMap.value.get(playerTeamId) ?? 'Equipo')
-            : 'Equipo'
+        const playerTeamName = teamsMap.value.get(playerTeamId) ?? 'Equipo'
 
         const opponentTeamId =
             playerTeamId === match.team_a_id ? match.team_b_id : match.team_a_id
@@ -200,10 +180,7 @@ const selectedPlayerHistory = computed<PlayerMatchHistoryRow[]>(() => {
         const opponentScore =
             playerTeamId === match.team_a_id ? match.team_b_score : match.team_a_score
 
-        let result: 'W' | 'L' = 'L'
-        if (playerTeamScore > opponentScore) {
-          result = 'W'
-        }
+        const result: 'W' | 'L' = playerTeamScore > opponentScore ? 'W' : 'L'
 
         return {
           matchId: match.id,
@@ -221,10 +198,8 @@ const selectedPlayerHistory = computed<PlayerMatchHistoryRow[]>(() => {
         }
       })
       .sort((a, b) => {
-        if (a.playedAt !== b.playedAt) {
-          return b.playedAt.localeCompare(a.playedAt)
-        }
-        return b.createdAt.localeCompare(a.createdAt)
+        if (a.playedAt !== b.playedAt) return b.playedAt.localeCompare(a.playedAt)
+        return a.createdAt.localeCompare(b.createdAt)
       })
 })
 
@@ -238,7 +213,7 @@ const historyForSelectedDate = computed(() => {
 
   return selectedPlayerHistory.value
       .filter((row) => row.playedAt === selectedDate.value)
-      .sort((a, b) => a.matchLabel.localeCompare(b.matchLabel))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 })
 
 const totalGames = computed(() => selectedPlayerHistory.value.length)
@@ -261,6 +236,28 @@ const totalPoints = computed(() => {
 
 const totalThrees = computed(() => {
   return selectedPlayerHistory.value.reduce((sum, row) => sum + row.threes, 0)
+})
+
+const averagePoints = computed(() => {
+  if (!totalGames.value) return 0
+  return totalPoints.value / totalGames.value
+})
+
+const averageThrees = computed(() => {
+  if (!totalGames.value) return 0
+  return totalThrees.value / totalGames.value
+})
+
+const jornadasJugadas = computed(() => {
+  return new Set(selectedPlayerHistory.value.map((row) => row.playedAt)).size
+})
+
+const bestPointsGame = computed(() => {
+  return [...selectedPlayerHistory.value].sort((a, b) => b.points - a.points)[0] ?? null
+})
+
+const bestThreesGame = computed(() => {
+  return [...selectedPlayerHistory.value].sort((a, b) => b.threes - a.threes)[0] ?? null
 })
 
 const playerMvpWins = computed<PlayerMvpWinRow[]>(() => {
@@ -314,8 +311,8 @@ onMounted(async () => {
     <div class="card-body">
       <div class="mb-3">
         <h2 class="h4 mb-1">Perfil del jugador</h2>
-        <p class="text-muted mb-0">
-          Muestra partidos reales jugados y jornadas donde ganó el MVP.
+        <p class="text-body-secondary mb-0">
+          Estadísticas, jornadas jugadas, promedios y MVPs del jugador.
         </p>
       </div>
 
@@ -357,39 +354,28 @@ onMounted(async () => {
         <template v-if="selectedPlayer">
           <div class="row g-3 mb-4">
             <div class="col-12 col-md-6 col-xl-3">
-              <div class="card border-0 bg-light h-100">
+              <div class="card border-0 bg-light-subtle h-100">
                 <div class="card-body">
-                  <div class="small text-muted mb-1">Equipo base</div>
-                  <div class="fw-bold">
-                    {{ teamsMap.get(selectedPlayer.team_id) ?? 'Sin equipo' }}
-                  </div>
+                  <div class="small text-body-secondary mb-1">Equipo base</div>
+                  <div class="fw-bold">{{ teamsMap.get(selectedPlayer.team_id) ?? 'Sin equipo' }}</div>
                 </div>
               </div>
             </div>
 
             <div class="col-12 col-md-6 col-xl-3">
-              <div class="card border-0 bg-light h-100">
+              <div class="card border-0 bg-light-subtle h-100">
                 <div class="card-body">
-                  <div class="small text-muted mb-1">Juegos jugados</div>
+                  <div class="small text-body-secondary mb-1">Juegos jugados</div>
                   <div class="fw-bold">{{ totalGames }}</div>
                 </div>
               </div>
             </div>
 
             <div class="col-12 col-md-6 col-xl-3">
-              <div class="card border-0 bg-light h-100">
+              <div class="card border-0 bg-light-subtle h-100">
                 <div class="card-body">
-                  <div class="small text-muted mb-1">Récord</div>
+                  <div class="small text-body-secondary mb-1">Récord</div>
                   <div class="fw-bold">{{ totalWins }} - {{ totalLosses }}</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="col-12 col-md-6 col-xl-3">
-              <div class="card border-0 bg-light h-100">
-                <div class="card-body">
-                  <div class="small text-muted mb-1">Puntos / 3PT</div>
-                  <div class="fw-bold">{{ totalPoints }} / {{ totalThrees }}</div>
                 </div>
               </div>
             </div>
@@ -397,22 +383,99 @@ onMounted(async () => {
             <div class="col-12 col-md-6 col-xl-3">
               <div class="card border-0 bg-warning-subtle h-100">
                 <div class="card-body">
-                  <div class="small text-muted mb-1">MVPs ganados</div>
+                  <div class="small text-body-secondary mb-1">MVPs ganados</div>
                   <div class="fw-bold">🏆 {{ totalMvpWins }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Puntos totales</div>
+                  <div class="fw-bold">{{ totalPoints }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Triples totales</div>
+                  <div class="fw-bold">{{ totalThrees }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Promedio de puntos</div>
+                  <div class="fw-bold">{{ averagePoints.toFixed(1) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Promedio de triples</div>
+                  <div class="fw-bold">{{ averageThrees.toFixed(1) }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Jornadas jugadas</div>
+                  <div class="fw-bold">{{ jornadasJugadas }}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Mejor partido en puntos</div>
+                  <div class="fw-bold">{{ bestPointsGame?.points ?? 0 }}</div>
+                  <div class="small text-body-secondary mt-1">
+                    {{ bestPointsGame ? formatDate(bestPointsGame.playedAt) : 'N/A' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12 col-md-6 col-xl-3">
+              <div class="card border-0 bg-light-subtle h-100">
+                <div class="card-body">
+                  <div class="small text-body-secondary mb-1">Mejor partido en triples</div>
+                  <div class="fw-bold">{{ bestThreesGame?.threes ?? 0 }}</div>
+                  <div class="small text-body-secondary mt-1">
+                    {{ bestThreesGame ? formatDate(bestThreesGame.playedAt) : 'N/A' }}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div v-if="playerMvpWins.length" class="card border-warning mb-4">
-            <div class="card-body">
-              <h3 class="h5 mb-3">MVPs ganados por jornada</h3>
+          <div class="row g-3 mb-4">
+            <div class="col-12 col-lg-6">
+              <div class="card border-warning h-100">
+                <div class="card-body">
+                  <h3 class="h5 mb-3">MVPs ganados por jornada</h3>
 
-              <ul class="mb-0">
-                <li v-for="win in playerMvpWins" :key="win.playedAt">
-                  {{ formatDate(win.playedAt) }} · {{ win.votes }} voto(s)
-                </li>
-              </ul>
+                  <ul v-if="playerMvpWins.length" class="mb-0">
+                    <li v-for="win in playerMvpWins" :key="win.playedAt">
+                      {{ formatDate(win.playedAt) }} · {{ win.votes }} voto(s)
+                    </li>
+                  </ul>
+
+                  <p v-else class="text-body-secondary mb-0">
+                    Este jugador todavía no ha ganado un MVP de jornada.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -431,6 +494,7 @@ onMounted(async () => {
                     <th>Resultado</th>
                     <th>Puntos</th>
                     <th>3PT</th>
+                    <th>Estado</th>
                   </tr>
                   </thead>
                   <tbody>
@@ -446,6 +510,13 @@ onMounted(async () => {
                     </td>
                     <td>{{ row.points }}</td>
                     <td>{{ row.threes }}</td>
+                    <td>
+                        <span
+                            class="badge"
+                            :class="row.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+                          {{ row.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+                        </span>
+                    </td>
                   </tr>
                   </tbody>
                 </table>
@@ -453,7 +524,7 @@ onMounted(async () => {
             </div>
           </div>
 
-          <p v-else class="text-muted mb-0">
+          <p v-else class="text-body-secondary mb-0">
             No hay partidos registrados para este jugador en la jornada seleccionada.
           </p>
         </template>

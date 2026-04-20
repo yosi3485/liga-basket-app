@@ -9,18 +9,21 @@ import NewMatchFlow from './components/NewMatchFlow.vue'
 import PlayerProfile from './components/PlayerProfile.vue'
 import PlayersLeaderboard from './components/PlayersLeaderboard.vue'
 import PlayersManager from './components/PlayersManager.vue'
-import PlayerUsersManager from './components/PlayerUserManager.vue'
-import StandingsTable from './components/StandingsTable.vue'
+import PlayerUsersManager from './components/PlayerUsersManager.vue'
+import TableView from './components/TableView.vue'
+// import TeamOverview from './components/TeamOverview.vue'
 import TeamsManager from './components/TeamsManager.vue'
 import { useAuth } from './composables/useAuth'
 
 type AppTab =
-    | 'standings'
+    | 'home'
+    | 'table_view'
     | 'leaderboard'
     | 'match_days'
     | 'match_details'
     | 'player_profile'
     | 'mvp_vote'
+    | 'team_view'
     | 'new_match_flow'
     | 'teams'
     | 'players'
@@ -28,18 +31,20 @@ type AppTab =
 
 const matchesRefreshKey = ref(0)
 const teamsRefreshKey = ref(0)
-const activeTab = ref<AppTab>('standings')
+const activeTab = ref<AppTab>('home')
 const selectedMatchDetailsId = ref('')
 
 const { isAdmin } = useAuth()
 
 const publicTabs = computed<AppTab[]>(() => [
-  'standings',
+  'home',
+  'table_view',
   'match_days',
   'match_details',
   'leaderboard',
   'player_profile',
-  'mvp_vote'
+  'mvp_vote',
+  'team_view'
 ])
 
 const adminTabs = computed<AppTab[]>(() => [
@@ -77,14 +82,16 @@ function handleFlowCompleted(matchId: string) {
 function tabLabel(tab: AppTab) {
   return (
       {
-        standings: 'Tabla',
+        home: 'Home',
+        table_view: 'Tabla',
         leaderboard: 'Leaderboard',
         match_days: 'Jornadas',
         match_details: 'Detalle partido',
         player_profile: 'Perfil jugador',
         mvp_vote: 'MVP jornada',
+        team_view: 'Equipos',
         new_match_flow: 'Nuevo partido',
-        teams: 'Equipos',
+        teams: 'Equipos admin',
         players: 'Jugadores',
         player_users: 'Usuarios jugadores'
       }[tab] ?? 'Navegación'
@@ -103,7 +110,7 @@ onMounted(() => {
     return
   }
 
-  activeTab.value = 'standings'
+  activeTab.value = 'home'
 })
 
 watch(activeTab, (newTab) => {
@@ -112,7 +119,7 @@ watch(activeTab, (newTab) => {
 
 watch(isAdmin, (newIsAdmin) => {
   if (!newIsAdmin && !publicTabs.value.includes(activeTab.value)) {
-    activeTab.value = 'standings'
+    activeTab.value = 'home'
   }
 })
 </script>
@@ -133,8 +140,8 @@ watch(isAdmin, (newIsAdmin) => {
             Liga de Basket
           </h1>
 
-          <p class="text-muted mb-0 col-lg-8">
-            Administra equipos, registra resultados, consulta la tabla de posiciones y organiza jugadores en una sola app.
+          <p class="text-body-secondary mb-0 col-lg-8">
+            Administra equipos, registra resultados, consulta la tabla, revisa jornadas y sigue el rendimiento de los jugadores.
           </p>
         </div>
       </div>
@@ -154,8 +161,11 @@ watch(isAdmin, (newIsAdmin) => {
           </button>
 
           <ul class="dropdown-menu w-100">
-            <li v-if="isTabVisible('standings')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'standings'">Tabla</button>
+            <li v-if="isTabVisible('home')">
+              <button class="dropdown-item" type="button" @click="activeTab = 'home'">Home</button>
+            </li>
+            <li v-if="isTabVisible('table_view')">
+              <button class="dropdown-item" type="button" @click="activeTab = 'table_view'">Tabla</button>
             </li>
             <li v-if="isTabVisible('match_days')">
               <button class="dropdown-item" type="button" @click="activeTab = 'match_days'">Jornadas</button>
@@ -172,12 +182,15 @@ watch(isAdmin, (newIsAdmin) => {
             <li v-if="isTabVisible('mvp_vote')">
               <button class="dropdown-item" type="button" @click="activeTab = 'mvp_vote'">MVP jornada</button>
             </li>
+            <li v-if="isTabVisible('team_view')">
+              <button class="dropdown-item" type="button" @click="activeTab = 'team_view'">Equipos</button>
+            </li>
 
             <li v-if="isTabVisible('new_match_flow')">
               <button class="dropdown-item" type="button" @click="activeTab = 'new_match_flow'">Nuevo partido</button>
             </li>
             <li v-if="isTabVisible('teams')">
-              <button class="dropdown-item" type="button" @click="activeTab = 'teams'">Equipos</button>
+              <button class="dropdown-item" type="button" @click="activeTab = 'teams'">Equipos admin</button>
             </li>
             <li v-if="isTabVisible('players')">
               <button class="dropdown-item" type="button" @click="activeTab = 'players'">Jugadores</button>
@@ -190,26 +203,31 @@ watch(isAdmin, (newIsAdmin) => {
       </div>
 
       <div class="d-none d-md-flex gap-2 flex-wrap">
-        <button v-if="isTabVisible('standings')" type="button" class="btn" :class="activeTab === 'standings' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'standings'">Tabla</button>
+        <button v-if="isTabVisible('home')" type="button" class="btn" :class="activeTab === 'home' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'home'">Home</button>
+        <button v-if="isTabVisible('table_view')" type="button" class="btn" :class="activeTab === 'table_view' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'table_view'">Tabla</button>
         <button v-if="isTabVisible('match_days')" type="button" class="btn" :class="activeTab === 'match_days' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'match_days'">Jornadas</button>
         <button v-if="isTabVisible('match_details')" type="button" class="btn" :class="activeTab === 'match_details' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'match_details'">Detalle partido</button>
         <button v-if="isTabVisible('leaderboard')" type="button" class="btn" :class="activeTab === 'leaderboard' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'leaderboard'">Leaderboard</button>
         <button v-if="isTabVisible('player_profile')" type="button" class="btn" :class="activeTab === 'player_profile' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'player_profile'">Perfil jugador</button>
         <button v-if="isTabVisible('mvp_vote')" type="button" class="btn" :class="activeTab === 'mvp_vote' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'mvp_vote'">MVP jornada</button>
+        <button v-if="isTabVisible('team_view')" type="button" class="btn" :class="activeTab === 'team_view' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'team_view'">Equipos</button>
 
         <button v-if="isTabVisible('new_match_flow')" type="button" class="btn" :class="activeTab === 'new_match_flow' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'new_match_flow'">Nuevo partido</button>
-        <button v-if="isTabVisible('teams')" type="button" class="btn" :class="activeTab === 'teams' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'teams'">Equipos</button>
+        <button v-if="isTabVisible('teams')" type="button" class="btn" :class="activeTab === 'teams' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'teams'">Equipos admin</button>
         <button v-if="isTabVisible('players')" type="button" class="btn" :class="activeTab === 'players' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'players'">Jugadores</button>
         <button v-if="isTabVisible('player_users')" type="button" class="btn" :class="activeTab === 'player_users' ? 'btn-dark' : 'btn-outline-dark'" @click="activeTab = 'player_users'">Usuarios jugadores</button>
       </div>
     </nav>
 
-    <section v-if="activeTab === 'standings'" class="row g-4">
+    <section v-if="activeTab === 'home'" class="row g-4">
       <div class="col-12">
         <LeagueDashboard :refresh-key="matchesRefreshKey + teamsRefreshKey" />
       </div>
+    </section>
+
+    <section v-else-if="activeTab === 'table_view'" class="row g-4">
       <div class="col-12">
-        <StandingsTable :refresh-key="matchesRefreshKey + teamsRefreshKey" />
+        <TableView :refresh-key="matchesRefreshKey + teamsRefreshKey" />
       </div>
     </section>
 
@@ -244,6 +262,12 @@ watch(isAdmin, (newIsAdmin) => {
         <JornadaMvpVoting />
       </div>
     </section>
+
+<!--    <section v-else-if="activeTab === 'team_view'" class="row g-4">-->
+<!--      <div class="col-12">-->
+<!--        <TeamOverview />-->
+<!--      </div>-->
+<!--    </section>-->
 
     <section v-else-if="activeTab === 'new_match_flow'" class="row g-4">
       <div class="col-12">

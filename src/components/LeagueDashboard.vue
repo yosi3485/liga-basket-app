@@ -42,6 +42,7 @@ type PlayerRow = {
 }
 
 type PlayerStatRow = {
+  match_id: string
   player_id: string
   points: number
   three_pointers: number
@@ -81,32 +82,16 @@ async function loadData() {
       { data: statsData, error: statsError },
       { data: votesData, error: votesError }
     ] = await Promise.all([
-      supabase
-          .from('teams')
-          .select('id, name')
-          .order('name', { ascending: true }),
-
-      supabase
-          .from('standings_base')
-          .select('team_id, base_played, base_won, base_lost'),
-
+      supabase.from('teams').select('id, name').order('name', { ascending: true }),
+      supabase.from('standings_base').select('team_id, base_played, base_won, base_lost'),
       supabase
           .from('matches')
           .select('id, team_a_id, team_b_id, team_a_score, team_b_score, played_at, created_at, status')
           .order('played_at', { ascending: false })
           .order('created_at', { ascending: false }),
-
-      supabase
-          .from('players')
-          .select('id, name, team_id'),
-
-      supabase
-          .from('player_game_stats')
-          .select('player_id, points, three_pointers'),
-
-      supabase
-          .from('match_mvp_votes')
-          .select('id, played_at, voter_player_id, voted_player_id')
+      supabase.from('players').select('id, name, team_id'),
+      supabase.from('player_game_stats').select('match_id, player_id, points, three_pointers'),
+      supabase.from('match_mvp_votes').select('id, played_at, voter_player_id, voted_player_id')
     ])
 
     if (teamsError) throw teamsError
@@ -189,18 +174,6 @@ const standings = computed<StandingRow[]>(() => {
 
 const leader = computed(() => standings.value[0] ?? null)
 
-const rivalryRecord = computed(() => {
-  const santa = standings.value.find((row) => row.team === 'Santa Cruz')
-  const kendall = standings.value.find((row) => row.team === 'Kendall')
-
-  if (!santa || !kendall) return null
-
-  return {
-    santaWins: santa.won,
-    kendallWins: kendall.won
-  }
-})
-
 const latestMatch = computed(() => {
   if (!finishedMatches.value.length) return null
 
@@ -216,10 +189,63 @@ const latestMatch = computed(() => {
   }
 })
 
+const latestDateOverall = computed(() => {
+  return matches.value[0]?.played_at ?? ''
+})
+
+const latestFinishedDate = computed(() => {
+  return finishedMatches.value[0]?.played_at ?? ''
+})
+
 const playerTotals = computed(() => {
   const totals = new Map<string, { name: string; points: number; threes: number }>()
 
+  for (const player of players.value) {
+    totals.set(player.id, {
+      name: player.name,
+      points: 0,
+      threes: 0
+    })
+  }
+
   for (const stat of playerStats.value) {
+    const current = totals.get(stat.player_id)
+    if (!current) continue
+
+    current.points += stat.points ?? 0
+    current.threes += stat.three_pointers ?? 0
+  }
+
+  return Array.from(totals.values())
+})
+
+const topScorer = computed(() => {
+  return [...playerTotals.value]
+      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))[0] ?? null
+})
+
+const topThreeShooter = computed(() => {
+  return [...playerTotals.value]
+      .sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
+})
+
+const latestJornadaMatchesAllStatuses = computed(() => {
+  if (!latestDateOverall.value) return []
+  return matches.value.filter((match) => match.played_at === latestDateOverall.value)
+})
+
+const latestJornadaMatchesFinishedOnly = computed(() => {
+  if (!latestFinishedDate.value) return []
+  return finishedMatches.value.filter((match) => match.played_at === latestFinishedDate.value)
+})
+
+const latestJornadaStats = computed(() => {
+  if (!latestJornadaMatchesAllStatuses.value.length) return []
+
+  const latestMatchIds = new Set(latestJornadaMatchesAllStatuses.value.map((match) => match.id))
+  const totals = new Map<string, { name: string; points: number; threes: number }>()
+
+  for (const stat of playerStats.value.filter((row) => latestMatchIds.has(row.match_id))) {
     const player = playerMap.value.get(stat.player_id)
     if (!player) continue
 
@@ -239,18 +265,48 @@ const playerTotals = computed(() => {
   return Array.from(totals.values())
 })
 
-const topScorer = computed(() => {
-  return [...playerTotals.value]
+const latestJornadaTopScorer = computed(() => {
+  return [...latestJornadaStats.value]
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name))[0] ?? null
 })
 
-const topThreeShooter = computed(() => {
-  return [...playerTotals.value]
+const latestJornadaTopThreeShooter = computed(() => {
+  return [...latestJornadaStats.value]
       .sort((a, b) => b.threes - a.threes || a.name.localeCompare(b.name))[0] ?? null
 })
 
-const latestFinishedDate = computed(() => {
-  return finishedMatches.value[0]?.played_at ?? ''
+const latestJornadaWinner = computed(() => {
+  if (!latestJornadaMatchesFinishedOnly.value.length) return null
+
+  const winsMap = new Map<string, number>()
+
+  for (const match of latestJornadaMatchesFinishedOnly.value) {
+    if (match.team_a_score > match.team_b_score) {
+      winsMap.set(match.team_a_id, (winsMap.get(match.team_a_id) ?? 0) + 1)
+    } else if (match.team_b_score > match.team_a_score) {
+      winsMap.set(match.team_b_id, (winsMap.get(match.team_b_id) ?? 0) + 1)
+    }
+  }
+
+  const ranking = Array.from(winsMap.entries()).sort((a, b) => b[1] - a[1])
+  if (!ranking.length) return null
+
+  const topWins = ranking[0][1]
+  const winners = ranking.filter((entry) => entry[1] === topWins)
+
+  if (winners.length !== 1) {
+    return {
+      type: 'tie' as const,
+      wins: topWins,
+      teams: winners.map(([teamId]) => teamNameMap.value.get(teamId) ?? 'Equipo')
+    }
+  }
+
+  return {
+    type: 'single' as const,
+    teamName: teamNameMap.value.get(ranking[0][0]) ?? 'Equipo',
+    wins: topWins
+  }
 })
 
 const latestJornadaMvp = computed(() => {
@@ -326,7 +382,7 @@ watch(
           </div>
           <div class="card-body">
             <div class="fs-4 fw-bold">{{ leader?.team ?? 'N/A' }}</div>
-            <div class="text-muted mt-1">
+            <div class="text-body-secondary mt-1">
               Récord: {{ leader?.won ?? 0 }} - {{ leader?.lost ?? 0 }}
             </div>
             <div class="small mt-2">
@@ -344,39 +400,11 @@ watch(
       <div class="col-12 col-md-6 col-xl-4">
         <div class="card shadow-sm h-100">
           <div class="card-header">
-            <i class="fa-solid fa-scale-balanced me-2 text-primary"></i>
-            Santa Cruz vs Kendall
-          </div>
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <div class="text-center flex-fill">
-                <div class="small text-muted">Santa Cruz</div>
-                <div class="fs-3 fw-bold">{{ rivalryRecord?.santaWins ?? 0 }}</div>
-              </div>
-
-              <div class="px-3 fw-bold text-muted">-</div>
-
-              <div class="text-center flex-fill">
-                <div class="small text-muted">Kendall</div>
-                <div class="fs-3 fw-bold">{{ rivalryRecord?.kendallWins ?? 0 }}</div>
-              </div>
-            </div>
-
-            <div class="small text-muted text-center mt-2">
-              Histórico total
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-12 col-md-6 col-xl-4">
-        <div class="card shadow-sm h-100">
-          <div class="card-header">
             <i class="fa-solid fa-clock-rotate-left me-2 text-danger"></i>
-            Último partido
+            Último partido finalizado
           </div>
           <div class="card-body" v-if="latestMatch">
-            <div class="small text-muted mb-2">
+            <div class="small text-body-secondary mb-2">
               {{ formatDate(latestMatch.playedAt) }}
             </div>
 
@@ -397,21 +425,19 @@ watch(
             </div>
 
             <div class="mt-3">
-              <span
-                  class="badge"
-                  :class="latestMatch.status === 'finished' ? 'text-bg-success' : 'text-bg-warning'">
+              <span class="badge text-bg-success">
                 <i class="fa-solid fa-circle me-1"></i>
-                {{ latestMatch.status === 'finished' ? 'Finalizado' : 'En progreso' }}
+                Finalizado
               </span>
             </div>
           </div>
-          <div v-else class="card-body text-muted">
-            No hay partidos registrados todavía.
+          <div v-else class="card-body text-body-secondary">
+            No hay partidos finalizados todavía.
           </div>
         </div>
       </div>
 
-      <div class="col-12">
+      <div class="col-12 col-md-6 col-xl-4">
         <div class="card shadow-sm border-warning h-100">
           <div class="card-header">
             <i class="fa-solid fa-star me-2 text-warning"></i>
@@ -419,13 +445,13 @@ watch(
           </div>
 
           <div v-if="latestJornadaMvp" class="card-body">
-            <div class="small text-muted mb-2">
+            <div class="small text-body-secondary mb-2">
               {{ formatDate(latestJornadaMvp.playedAt) }}
             </div>
 
             <template v-if="latestJornadaMvp.type === 'single'">
               <div class="fs-4 fw-bold">🏆 {{ latestJornadaMvp.playerName }}</div>
-              <div class="text-muted mt-1">
+              <div class="text-body-secondary mt-1">
                 {{ latestJornadaMvp.teamName }}
               </div>
               <div class="small mt-2">
@@ -443,21 +469,21 @@ watch(
             </template>
           </div>
 
-          <div v-else class="card-body text-muted">
-            Todavía no hay votos registrados para la jornada más reciente.
+          <div v-else class="card-body text-body-secondary">
+            Todavía no hay votos registrados para la jornada finalizada más reciente.
           </div>
         </div>
       </div>
 
-      <div class="col-12 col-md-6">
+      <div class="col-12 col-md-6 col-xl-4">
         <div class="card shadow-sm h-100">
           <div class="card-header">
             <i class="fa-solid fa-bullseye me-2 text-success"></i>
-            Top anotador
+            Top anotador general
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ topScorer?.name ?? 'N/A' }}</div>
-            <div class="small text-muted mt-1">Puntos acumulados</div>
+            <div class="small text-body-secondary mt-1">Todos los partidos con stats guardados</div>
             <div class="display-6 fw-bold text-primary mt-2">
               {{ topScorer?.points ?? 0 }}
             </div>
@@ -465,18 +491,84 @@ watch(
         </div>
       </div>
 
-      <div class="col-12 col-md-6">
+      <div class="col-12 col-md-6 col-xl-4">
         <div class="card shadow-sm h-100">
           <div class="card-header">
             <i class="fa-solid fa-fire me-2 text-warning"></i>
-            Líder en triples
+            Líder en triples general
           </div>
           <div class="card-body">
             <div class="fs-5 fw-bold">{{ topThreeShooter?.name ?? 'N/A' }}</div>
-            <div class="small text-muted mt-1">Triples acumulados</div>
+            <div class="small text-body-secondary mt-1">Todos los partidos con stats guardados</div>
             <div class="display-6 fw-bold text-danger mt-2">
               {{ topThreeShooter?.threes ?? 0 }}
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <i class="fa-solid fa-chart-line me-2 text-info"></i>
+            Top anotador última jornada
+          </div>
+          <div class="card-body">
+            <div class="fs-5 fw-bold">{{ latestJornadaTopScorer?.name ?? 'N/A' }}</div>
+            <div class="small text-body-secondary mt-1">Incluye partidos en progreso de la fecha más reciente</div>
+            <div class="display-6 fw-bold text-info mt-2">
+              {{ latestJornadaTopScorer?.points ?? 0 }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <i class="fa-solid fa-basketball me-2 text-warning"></i>
+            Líder en triples última jornada
+          </div>
+          <div class="card-body">
+            <div class="fs-5 fw-bold">{{ latestJornadaTopThreeShooter?.name ?? 'N/A' }}</div>
+            <div class="small text-body-secondary mt-1">Incluye partidos en progreso de la fecha más reciente</div>
+            <div class="display-6 fw-bold text-warning mt-2">
+              {{ latestJornadaTopThreeShooter?.threes ?? 0 }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-md-6 col-xl-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-header">
+            <i class="fa-solid fa-medal me-2 text-success"></i>
+            Equipo ganador última jornada finalizada
+          </div>
+          <div class="card-body">
+            <template v-if="latestJornadaWinner?.type === 'single'">
+              <div class="fs-4 fw-bold">{{ latestJornadaWinner.teamName }}</div>
+              <div class="small text-body-secondary mt-1">Equipo ganador de la última jornada finalizada</div>
+              <div class="display-6 fw-bold text-success mt-2">
+                {{ latestJornadaWinner.wins }}
+              </div>
+              <div class="small text-body-secondary">victoria(s) en la jornada</div>
+            </template>
+
+            <template v-else-if="latestJornadaWinner?.type === 'tie'">
+              <div class="fw-bold mb-2">Empate en la jornada</div>
+              <ul class="mb-0">
+                <li v-for="team in latestJornadaWinner.teams" :key="team">
+                  {{ team }}
+                </li>
+              </ul>
+            </template>
+
+            <template v-else>
+              <div class="text-body-secondary">
+                No hay suficiente información para determinar el ganador de la última jornada finalizada.
+              </div>
+            </template>
           </div>
         </div>
       </div>

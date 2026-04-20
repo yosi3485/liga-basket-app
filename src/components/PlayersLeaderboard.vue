@@ -11,6 +11,7 @@ type PlayerRow = {
   id: string
   name: string
   team_id: string
+  is_active: boolean
 }
 
 type PlayerStatRow = {
@@ -19,9 +20,9 @@ type PlayerStatRow = {
   three_pointers: number
 }
 
-type LeaderRow = {
-  id: string
-  name: string
+type LeaderboardRow = {
+  playerId: string
+  playerName: string
   teamName: string
   totalPoints: number
   totalThrees: number
@@ -29,11 +30,12 @@ type LeaderRow = {
 
 const teams = ref<TeamRow[]>([])
 const players = ref<PlayerRow[]>([])
-const statsRows = ref<PlayerStatRow[]>([])
+const playerStats = ref<PlayerStatRow[]>([])
+
 const loading = ref(false)
 const errorMessage = ref('')
 
-async function loadLeaderboard() {
+async function loadData() {
   loading.value = true
   errorMessage.value = ''
 
@@ -43,9 +45,19 @@ async function loadLeaderboard() {
       { data: playersData, error: playersError },
       { data: statsData, error: statsError }
     ] = await Promise.all([
-      supabase.from('teams').select('id, name').order('name', { ascending: true }),
-      supabase.from('players').select('id, name, team_id').order('name', { ascending: true }),
-      supabase.from('player_game_stats').select('player_id, points, three_pointers')
+      supabase
+          .from('teams')
+          .select('id, name')
+          .order('name', { ascending: true }),
+
+      supabase
+          .from('players')
+          .select('id, name, team_id, is_active')
+          .order('name', { ascending: true }),
+
+      supabase
+          .from('player_game_stats')
+          .select('player_id, points, three_pointers')
     ])
 
     if (teamsError) throw teamsError
@@ -54,39 +66,36 @@ async function loadLeaderboard() {
 
     teams.value = teamsData ?? []
     players.value = playersData ?? []
-    statsRows.value = statsData ?? []
+    playerStats.value = statsData ?? []
   } catch (error) {
     errorMessage.value =
         error instanceof Error ? error.message : 'Error cargando leaderboard'
-    teams.value = []
-    players.value = []
-    statsRows.value = []
   } finally {
     loading.value = false
   }
 }
 
-const leaderboard = computed<LeaderRow[]>(() => {
-  const teamMap = new Map(teams.value.map((team) => [team.id, team.name]))
-  const playerMap = new Map(players.value.map((player) => [player.id, player]))
+const teamsMap = computed(() => {
+  return new Map(teams.value.map((team) => [team.id, team.name]))
+})
 
-  const totals = new Map<string, LeaderRow>()
+const playerTotals = computed<LeaderboardRow[]>(() => {
+  const totals = new Map<string, LeaderboardRow>()
 
-  for (const stat of statsRows.value) {
-    const player = playerMap.get(stat.player_id)
-    if (!player) continue
+  for (const player of players.value) {
+    totals.set(player.id, {
+      playerId: player.id,
+      playerName: player.name,
+      teamName: teamsMap.value.get(player.team_id) ?? 'Sin equipo',
+      totalPoints: 0,
+      totalThrees: 0
+    })
+  }
 
-    if (!totals.has(player.id)) {
-      totals.set(player.id, {
-        id: player.id,
-        name: player.name,
-        teamName: teamMap.get(player.team_id) ?? 'Sin equipo',
-        totalPoints: 0,
-        totalThrees: 0
-      })
-    }
+  for (const stat of playerStats.value) {
+    const current = totals.get(stat.player_id)
+    if (!current) continue
 
-    const current = totals.get(player.id)!
     current.totalPoints += stat.points ?? 0
     current.totalThrees += stat.three_pointers ?? 0
   }
@@ -95,27 +104,27 @@ const leaderboard = computed<LeaderRow[]>(() => {
 })
 
 const topScorers = computed(() => {
-  return [...leaderboard.value]
+  return [...playerTotals.value]
+      .filter((row) => row.totalPoints > 0 || row.totalThrees > 0)
       .sort((a, b) => {
         if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints
         if (b.totalThrees !== a.totalThrees) return b.totalThrees - a.totalThrees
-        return a.name.localeCompare(b.name)
+        return a.playerName.localeCompare(b.playerName)
       })
-      .slice(0, 10)
 })
 
-const topThrees = computed(() => {
-  return [...leaderboard.value]
+const topThreeShooters = computed(() => {
+  return [...playerTotals.value]
+      .filter((row) => row.totalThrees > 0 || row.totalPoints > 0)
       .sort((a, b) => {
         if (b.totalThrees !== a.totalThrees) return b.totalThrees - a.totalThrees
         if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints
-        return a.name.localeCompare(b.name)
+        return a.playerName.localeCompare(b.playerName)
       })
-      .slice(0, 10)
 })
 
 onMounted(() => {
-  loadLeaderboard()
+  loadData()
 })
 </script>
 
@@ -124,7 +133,7 @@ onMounted(() => {
     <div class="card-body">
       <div class="mb-3">
         <h2 class="h4 mb-1">Leaderboard</h2>
-        <p class="text-muted mb-0">
+        <p class="text-body-secondary mb-0">
           Ranking acumulado de puntos y triples por jugador.
         </p>
       </div>
@@ -135,111 +144,85 @@ onMounted(() => {
         {{ errorMessage }}
       </div>
 
-      <div v-else class="row g-4">
-        <div class="col-12 col-xl-6">
-          <h3 class="h5 mb-3">Top anotadores</h3>
+      <template v-else>
+        <div class="row g-4">
+          <div class="col-12 col-xl-6">
+            <div class="card border h-100">
+              <div class="card-body">
+                <h3 class="h5 mb-3">Top anotadores</h3>
 
-          <div v-if="topScorers.length" class="table-responsive">
-            <table class="table table-striped align-middle mb-0">
-              <thead class="table-light">
-              <tr>
-                <th>#</th>
-                <th>Jugador</th>
-                <th>Equipo</th>
-                <th>Puntos</th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr
-                  v-for="(player, index) in topScorers"
-                  :key="player.id"
-                  :class="{
-    'table-warning': index === 0,
-    'table-light': index === 1,
-    'table-secondary': index === 2
-  }"
-              >
-                <td>
-                  <span v-if="index === 0">🥇</span>
-                  <span v-else-if="index === 1">🥈</span>
-                  <span v-else-if="index === 2">🥉</span>
-                  <span v-else>{{ index + 1 }}</span>
-                </td>
+                <div v-if="topScorers.length" class="table-responsive">
+                  <table class="table table-striped align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                      <th>#</th>
+                      <th>Jugador</th>
+                      <th>Equipo</th>
+                      <th>Puntos</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(row, index) in topScorers" :key="row.playerId">
+                      <td>
+                        <span v-if="index === 0">🥇</span>
+                        <span v-else-if="index === 1">🥈</span>
+                        <span v-else-if="index === 2">🥉</span>
+                        <span v-else>{{ index + 1 }}</span>
+                      </td>
+                      <td class="fw-semibold">{{ row.playerName }}</td>
+                      <td>{{ row.teamName }}</td>
+                      <td>{{ row.totalPoints }}</td>
+                    </tr>
+                    </tbody>
+                  </table>
+                </div>
 
-                <td class="fw-semibold">
-                  <i class="fa-solid fa-user me-1 text-muted"></i>
-                  {{ player.name }}
-                </td>
-
-                <td>
-    <span class="badge text-bg-dark">
-      {{ player.teamName }}
-    </span>
-                </td>
-
-                <td class="fw-bold text-primary">
-                  {{ player.totalPoints }}
-                </td>
-              </tr>
-              </tbody>
-            </table>
+                <p v-else class="text-body-secondary mb-0">
+                  No hay estadísticas todavía.
+                </p>
+              </div>
+            </div>
           </div>
 
-          <p v-else class="text-muted mb-0">No hay estadísticas todavía.</p>
-        </div>
+          <div class="col-12 col-xl-6">
+            <div class="card border h-100">
+              <div class="card-body">
+                <h3 class="h5 mb-3">Top en triples</h3>
 
-        <div class="col-12 col-xl-6">
-          <h3 class="h5 mb-3">Top en triples</h3>
+                <div v-if="topThreeShooters.length" class="table-responsive">
+                  <table class="table table-striped align-middle mb-0">
+                    <thead class="table-light">
+                    <tr>
+                      <th>#</th>
+                      <th>Jugador</th>
+                      <th>Equipo</th>
+                      <th>3PT</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(row, index) in topThreeShooters" :key="row.playerId">
+                      <td>
+                        <span v-if="index === 0">🥇</span>
+                        <span v-else-if="index === 1">🥈</span>
+                        <span v-else-if="index === 2">🥉</span>
+                        <span v-else>{{ index + 1 }}</span>
+                      </td>
+                      <td class="fw-semibold">{{ row.playerName }}</td>
+                      <td>{{ row.teamName }}</td>
+                      <td>{{ row.totalThrees }}</td>
+                    </tr>
+                    </tbody>
+                  </table>
+                </div>
 
-          <div v-if="topThrees.length" class="table-responsive">
-            <table class="table table-striped align-middle mb-0">
-              <thead class="table-light">
-              <tr>
-                <th>#</th>
-                <th>Jugador</th>
-                <th>Equipo</th>
-                <th>Triples</th>
-              </tr>
-              </thead>
-              <tbody>
-              <tr
-                  v-for="(player, index) in topThrees"
-                  :key="player.id"
-                  :class="{
-    'table-warning': index === 0,
-    'table-light': index === 1,
-    'table-secondary': index === 2
-  }"
-              >
-                <td>
-                  <span v-if="index === 0">🥇</span>
-                  <span v-else-if="index === 1">🥈</span>
-                  <span v-else-if="index === 2">🥉</span>
-                  <span v-else>{{ index + 1 }}</span>
-                </td>
-
-                <td class="fw-semibold">
-                  <i class="fa-solid fa-user me-1 text-muted"></i>
-                  {{ player.name }}
-                </td>
-
-                <td>
-    <span class="badge text-bg-dark">
-      {{ player.teamName }}
-    </span>
-                </td>
-
-                <td class="fw-bold text-danger">
-                  {{ player.totalThrees }}
-                </td>
-              </tr>
-              </tbody>
-            </table>
+                <p v-else class="text-body-secondary mb-0">
+                  No hay estadísticas todavía.
+                </p>
+              </div>
+            </div>
           </div>
-
-          <p v-else class="text-muted mb-0">No hay estadísticas todavía.</p>
         </div>
-      </div>
+      </template>
     </div>
   </section>
 </template>
