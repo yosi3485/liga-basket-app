@@ -1,21 +1,51 @@
+// {
+//   "name": "Liga Superior de Basquet",
+//   "short_name": "LSB",
+//   "icons": [
+//     {
+//       "src": "/web-app-manifest-192x192.png",
+//       "sizes": "192x192",
+//       "type": "image/png",
+//       "purpose": "maskable"
+//     },
+//     {
+//       "src": "/web-app-manifest-512x512.png",
+//       "sizes": "512x512",
+//       "type": "image/png",
+//       "purpose": "maskable"
+//     }
+//   ],
+//   "theme_color": "#ffffff",
+//   "background_color": "#ffffff",
+//   "display": "standalone"
+// }
+
 {
-  "name": "Liga Superior de Basquet",
+  "id": "/",
+  "name": "Liga de Basket",
   "short_name": "LSB",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#111827",
+  "background_color": "#111827",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "/web-app-manifest-192x192.png",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
+      "type": "image/png"
     },
     {
-      "src": "/web-app-manifest-512x512.png",
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-mask.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
-  "display": "standalone"
+  ]
 }
