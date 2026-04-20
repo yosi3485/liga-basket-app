@@ -210,6 +210,11 @@ function isAssignedToTeam(playerId: string, teamId: string) {
   return selectedPlayerIds.value.includes(playerId) && assignedTeamByPlayer.value[playerId] === teamId
 }
 
+function isDisabledForOtherTeam(playerId: string, destinationTeamId: string) {
+  return selectedPlayerIds.value.includes(playerId) &&
+      assignedTeamByPlayer.value[playerId] !== destinationTeamId
+}
+
 function assignPlayerToTeam(playerId: string, destinationTeamId: string) {
   if (!teamAId.value || !teamBId.value) return
   if (destinationTeamId !== teamAId.value && destinationTeamId !== teamBId.value) return
@@ -810,7 +815,7 @@ onMounted(() => {
                             v-for="player in teamABasePlayers"
                             :key="`team-a-base-${player.id}`"
                             class="col-12">
-                          <div class="card border-0 bg-light-subtle h-100">
+                          <div class="card border-0 bg-light-subtle h-100" :class="isDisabledForOtherTeam(player.id, teamAId) ? 'opacity-25' : ''">
                             <div class="card-body py-2 d-flex justify-content-between align-items-center">
                               <div>
                                 <div class="fw-semibold">{{ player.name }}</div>
@@ -823,6 +828,7 @@ onMounted(() => {
                                   class="form-check-input"
                                   type="checkbox"
                                   :checked="isAssignedToTeam(player.id, teamAId)"
+                                  :disabled="isDisabledForOtherTeam(player.id, teamAId)"
                                   @change="togglePlayerForTeam(player.id, ($event.target as HTMLInputElement).checked, teamAId)" />
                             </div>
                           </div>
@@ -838,7 +844,7 @@ onMounted(() => {
                             v-for="player in teamAReinforcementPlayers"
                             :key="`team-a-reinf-${player.id}`"
                             class="col-12">
-                          <div class="card border-0 bg-light-subtle h-100">
+                          <div class="card border-0 bg-light-subtle h-100" :class="isDisabledForOtherTeam(player.id, teamAId) ? 'opacity-25' : ''">
                             <div class="card-body py-2 d-flex justify-content-between align-items-center">
                               <div>
                                 <div class="fw-semibold">{{ player.name }}</div>
@@ -854,6 +860,7 @@ onMounted(() => {
                                   class="form-check-input"
                                   type="checkbox"
                                   :checked="isAssignedToTeam(player.id, teamAId)"
+                                  :disabled="isDisabledForOtherTeam(player.id, teamAId)"
                                   @change="togglePlayerForTeam(player.id, ($event.target as HTMLInputElement).checked, teamAId)" />
                             </div>
                           </div>
@@ -881,7 +888,7 @@ onMounted(() => {
                             v-for="player in teamBBasePlayers"
                             :key="`team-b-base-${player.id}`"
                             class="col-12">
-                          <div class="card border-0 bg-light-subtle h-100">
+                          <div class="card border-0 bg-light-subtle h-100" :class="isDisabledForOtherTeam(player.id, teamBId) ? 'opacity-25' : ''">
                             <div class="card-body py-2 d-flex justify-content-between align-items-center">
                               <div>
                                 <div class="fw-semibold">{{ player.name }}</div>
@@ -894,6 +901,7 @@ onMounted(() => {
                                   class="form-check-input"
                                   type="checkbox"
                                   :checked="isAssignedToTeam(player.id, teamBId)"
+                                  :disabled="isDisabledForOtherTeam(player.id, teamBId)"
                                   @change="togglePlayerForTeam(player.id, ($event.target as HTMLInputElement).checked, teamBId)" />
                             </div>
                           </div>
@@ -909,7 +917,7 @@ onMounted(() => {
                             v-for="player in teamBReinforcementPlayers"
                             :key="`team-b-reinf-${player.id}`"
                             class="col-12">
-                          <div class="card border-0 bg-light-subtle h-100">
+                          <div class="card border-0 bg-light-subtle h-100" :class="isDisabledForOtherTeam(player.id, teamBId) ? 'opacity-25' : ''">
                             <div class="card-body py-2 d-flex justify-content-between align-items-center">
                               <div>
                                 <div class="fw-semibold">{{ player.name }}</div>
@@ -925,6 +933,7 @@ onMounted(() => {
                                   class="form-check-input"
                                   type="checkbox"
                                   :checked="isAssignedToTeam(player.id, teamBId)"
+                                  :disabled="isDisabledForOtherTeam(player.id, teamBId)"
                                   @change="togglePlayerForTeam(player.id, ($event.target as HTMLInputElement).checked, teamBId)" />
                             </div>
                           </div>
