@@ -12,6 +12,7 @@ import PlayersManager from './components/PlayersManager.vue'
 import PlayerUsersManager from './components/PlayerUsersManager.vue'
 import TableView from './components/TableView.vue'
 import TeamsManager from './components/TeamsManager.vue'
+import MvpVoteReminder from './components/MvpVoteReminder.vue'
 import { useAuth } from './composables/useAuth'
 
 type AppTab =
@@ -74,6 +75,10 @@ function handleFlowCompleted(matchId: string) {
   matchesRefreshKey.value += 1
   selectedMatchDetailsId.value = matchId
   activeTab.value = 'match_details'
+}
+
+function handleGoToMvpVote() {
+  activeTab.value = 'mvp_vote'
 }
 
 function tabLabel(tab: AppTab) {
@@ -144,6 +149,8 @@ watch(isAdmin, (newIsAdmin) => {
     </header>
 
     <AuthPanel />
+
+    <MvpVoteReminder @go-to-mvp="handleGoToMvpVote" />
 
     <nav class="mb-4">
       <div class="d-block d-md-none">
