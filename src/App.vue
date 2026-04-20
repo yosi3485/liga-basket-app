@@ -41,17 +41,17 @@ const selectedMatchDetailsId = ref('')
 const { isAdmin } = useAuth()
 
 const navItems = computed<NavItem[]>(() => [
-  { id: 'home', label: 'Home' },
-  { id: 'table_view', label: 'Tabla' },
+  { id: 'home', label: 'Inicio' },
+  { id: 'table_view', label: 'Tabla General' },
   { id: 'match_days', label: 'Jornadas' },
-  { id: 'match_details', label: 'Detalle partido' },
-  { id: 'leaderboard', label: 'Leaderboard' },
-  { id: 'player_profile', label: 'Perfil jugador' },
-  { id: 'mvp_vote', label: 'MVP jornada' },
-  { id: 'new_match_flow', label: 'Nuevo partido', adminOnly: true },
-  { id: 'teams', label: 'Equipos admin', adminOnly: true },
+  { id: 'match_details', label: 'Partido' },
+  { id: 'leaderboard', label: 'Líderes' },
+  { id: 'player_profile', label: 'Perfil' },
+  { id: 'mvp_vote', label: 'MVP' },
+  { id: 'new_match_flow', label: 'Nuevo Partido', adminOnly: true },
+  { id: 'teams', label: 'Equipos', adminOnly: true },
   { id: 'players', label: 'Jugadores', adminOnly: true },
-  { id: 'player_users', label: 'Usuarios jugadores', adminOnly: true }
+  { id: 'player_users', label: 'Usuarios', adminOnly: true }
 ])
 
 const visibleNavItems = computed(() => {

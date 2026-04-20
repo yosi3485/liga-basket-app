@@ -202,10 +202,6 @@ function teamName(teamId: string) {
   return teamsMap.value.get(teamId) ?? 'Equipo'
 }
 
-function teamLabel(teamId: string, fallback: string) {
-  return teamsMap.value.get(teamId) ?? fallback
-}
-
 function isAssignedToTeam(playerId: string, teamId: string) {
   return selectedPlayerIds.value.includes(playerId) && assignedTeamByPlayer.value[playerId] === teamId
 }
@@ -684,10 +680,10 @@ onMounted(() => {
                 {{ formatDate(match.played_at) }}
               </div>
               <div class="small text-body-secondary">
-                {{ teamLabel(match.team_a_id, 'Equipo A') }}
+                {{ teamName(match.team_a_id) }}
                 {{ match.team_a_score }} -
                 {{ match.team_b_score }}
-                {{ teamLabel(match.team_b_id, 'Equipo B') }}
+                {{ teamName(match.team_b_id) }}
               </div>
             </div>
 
