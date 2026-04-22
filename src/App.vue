@@ -9,7 +9,6 @@ import NewMatchFlow from './components/NewMatchFlow.vue'
 import PlayerProfile from './components/PlayerProfile.vue'
 import PlayersLeaderboard from './components/PlayersLeaderboard.vue'
 import PlayersManager from './components/PlayersManager.vue'
-import PlayerUsersManager from './components/PlayerUsersManager.vue'
 import TableView from './components/TableView.vue'
 import TeamsManager from './components/TeamsManager.vue'
 import { useAuth } from './composables/useAuth'
@@ -25,7 +24,7 @@ type AppTab =
     | 'new_match_flow'
     | 'teams'
     | 'players'
-    | 'player_users'
+
 
 type NavItem = {
   id: AppTab
@@ -51,7 +50,6 @@ const navItems = computed<NavItem[]>(() => [
   { id: 'new_match_flow', label: 'Nuevo Partido', adminOnly: true },
   { id: 'teams', label: 'Equipos', adminOnly: true },
   { id: 'players', label: 'Jugadores', adminOnly: true },
-  { id: 'player_users', label: 'Usuarios', adminOnly: true }
 ])
 
 const visibleNavItems = computed(() => {
@@ -252,15 +250,11 @@ watch(isAdmin, (newIsAdmin) => {
     </section>
 
     <section v-else-if="activeTab === 'players'" class="row g-4">
-      <div class="col-12 col-xl-8">
+
+      <div class="col-12">
         <PlayersManager />
       </div>
     </section>
 
-    <section v-else-if="activeTab === 'player_users'" class="row g-4">
-      <div class="col-12">
-        <PlayerUsersManager />
-      </div>
-    </section>
   </main>
 </template>

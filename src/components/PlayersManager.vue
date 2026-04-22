@@ -2,6 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../composables/useAuth'
+import {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError
+} from '@supabase/supabase-js'
 
 type TeamRow = {
   id: string
@@ -39,6 +44,8 @@ const formName = ref('')
 const formTeamId = ref('')
 const formJerseyNumber = ref<number | null>(null)
 const formIsActive = ref(true)
+const formEmail = ref('')
+const formPassword = ref('')
 
 async function loadTeams() {
   const { data, error } = await supabase
@@ -111,6 +118,8 @@ function resetForm() {
   formTeamId.value = teams.value[0]?.id ?? ''
   formJerseyNumber.value = null
   formIsActive.value = true
+  formEmail.value = ''
+  formPassword.value = ''
   errorMessage.value = ''
 }
 
@@ -120,12 +129,41 @@ function startEditing(player: PlayerRow) {
   formTeamId.value = player.team_id
   formJerseyNumber.value = player.jersey_number
   formIsActive.value = player.is_active
+  formEmail.value = ''
+  formPassword.value = ''
   errorMessage.value = ''
   successMessage.value = ''
 }
 
 function cancelEditing() {
   resetForm()
+}
+
+async function createPlayerWithAccess() {
+  if (!formEmail.value.trim()) {
+    errorMessage.value = 'Debes escribir el email del jugador.'
+    return
+  }
+
+  if (!formPassword.value.trim() || formPassword.value.trim().length < 6) {
+    errorMessage.value = 'La contraseña temporal debe tener al menos 6 caracteres.'
+    return
+  }
+
+  const { data, error } = await supabase.functions.invoke('create-player-with-access', {
+    body: {
+      playerName: formName.value.trim(),
+      teamId: formTeamId.value,
+      jerseyNumber: formJerseyNumber.value,
+      email: formEmail.value.trim(),
+      password: formPassword.value.trim()
+    }
+  })
+
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+
+  successMessage.value = `Jugador creado y vinculado correctamente. Acceso: ${data.email}`
 }
 
 async function savePlayer() {
@@ -144,61 +182,64 @@ async function savePlayer() {
 
   saving.value = true
 
-  const payload = {
-    name: formName.value.trim(),
-    team_id: formTeamId.value,
-    jersey_number: formJerseyNumber.value,
-    is_active: formIsActive.value
-  }
+  try {
+    if (editingPlayerId.value) {
+      const { error } = await supabase
+          .from('players')
+          .update({
+            name: formName.value.trim(),
+            team_id: formTeamId.value,
+            jersey_number: formJerseyNumber.value,
+            is_active: formIsActive.value
+          })
+          .eq('id', editingPlayerId.value)
 
-  let error: { message: string } | null = null
+      if (error) throw error
 
-  if (editingPlayerId.value) {
-    const response = await supabase
-        .from('players')
-        .update(payload)
-        .eq('id', editingPlayerId.value)
-
-    error = response.error
-  } else {
-    const response = await supabase
-        .from('players')
-        .insert(payload)
-
-    error = response.error
-  }
-
-  if (error) {
-    errorMessage.value = error.message
-  } else {
-    successMessage.value = editingPlayerId.value
-        ? 'Jugador actualizado correctamente.'
-        : 'Jugador creado correctamente.'
+      successMessage.value = 'Jugador actualizado correctamente.'
+    } else {
+      await createPlayerWithAccess()
+    }
 
     await loadPlayers()
     await loadInactiveSuggestions()
     resetForm()
+  } catch (error) {
+    if (error instanceof FunctionsHttpError) {
+      const errorResponse = await error.context.json()
+      errorMessage.value = errorResponse.error ?? 'La función devolvió un error HTTP'
+    } else if (error instanceof FunctionsRelayError) {
+      errorMessage.value = 'Error de relay al hablar con la Edge Function'
+    } else if (error instanceof FunctionsFetchError) {
+      errorMessage.value = 'No se pudo alcanzar la Edge Function'
+    } else {
+      errorMessage.value =
+          error instanceof Error ? error.message : 'Error guardando jugador'
+    }
+  } finally {
+    saving.value = false
   }
-
-  saving.value = false
 }
 
-async function deletePlayer(playerId: string) {
-  const confirmed = window.confirm('¿Seguro que quieres eliminar este jugador?')
+async function deletePlayer(playerId: string, playerName: string) {
+  const confirmed = window.confirm(
+      `¿Seguro que quieres eliminar a ${playerName}? Esto también borrará su acceso.`
+  )
+
   if (!confirmed) return
 
   errorMessage.value = ''
   successMessage.value = ''
   saving.value = true
 
-  const { error } = await supabase
-      .from('players')
-      .delete()
-      .eq('id', playerId)
+  try {
+    const { data, error } = await supabase.functions.invoke('delete-player-and-access', {
+      body: { playerId }
+    })
 
-  if (error) {
-    errorMessage.value = error.message
-  } else {
+    if (error) throw error
+    if (data?.error) throw new Error(data.error)
+
     successMessage.value = 'Jugador eliminado correctamente.'
     await loadPlayers()
     await loadInactiveSuggestions()
@@ -206,9 +247,21 @@ async function deletePlayer(playerId: string) {
     if (editingPlayerId.value === playerId) {
       resetForm()
     }
+  } catch (error) {
+    if (error instanceof FunctionsHttpError) {
+      const errorResponse = await error.context.json()
+      errorMessage.value = errorResponse.error ?? 'La función devolvió un error HTTP'
+    } else if (error instanceof FunctionsRelayError) {
+      errorMessage.value = 'Error de relay al hablar con la Edge Function'
+    } else if (error instanceof FunctionsFetchError) {
+      errorMessage.value = 'No se pudo alcanzar la Edge Function'
+    } else {
+      errorMessage.value =
+          error instanceof Error ? error.message : 'Error eliminando jugador'
+    }
+  } finally {
+    saving.value = false
   }
-
-  saving.value = false
 }
 
 async function togglePlayerActive(player: PlayerRow) {
@@ -216,16 +269,16 @@ async function togglePlayerActive(player: PlayerRow) {
   successMessage.value = ''
   saving.value = true
 
-  const { error } = await supabase
-      .from('players')
-      .update({
-        is_active: !player.is_active
-      })
-      .eq('id', player.id)
+  try {
+    const { error } = await supabase
+        .from('players')
+        .update({
+          is_active: !player.is_active
+        })
+        .eq('id', player.id)
 
-  if (error) {
-    errorMessage.value = error.message
-  } else {
+    if (error) throw error
+
     successMessage.value = player.is_active
         ? 'Jugador marcado como inactivo.'
         : 'Jugador marcado como activo.'
@@ -236,9 +289,12 @@ async function togglePlayerActive(player: PlayerRow) {
     if (editingPlayerId.value === player.id) {
       formIsActive.value = !player.is_active
     }
+  } catch (error) {
+    errorMessage.value =
+        error instanceof Error ? error.message : 'Error actualizando estado del jugador'
+  } finally {
+    saving.value = false
   }
-
-  saving.value = false
 }
 
 onMounted(async () => {
@@ -256,7 +312,7 @@ onMounted(async () => {
       <div class="mb-3">
         <h2 class="h4 mb-1">Jugadores</h2>
         <p class="text-muted mb-0">
-          Administra jugadores, su equipo, número y estado de actividad.
+          Crea jugadores con acceso y administra su equipo, número y estado.
         </p>
       </div>
 
@@ -288,7 +344,7 @@ onMounted(async () => {
         <div class="card border mb-4">
           <div class="card-body">
             <h3 class="h5 mb-3">
-              {{ editingPlayerId ? 'Editar jugador' : 'Nuevo jugador' }}
+              {{ editingPlayerId ? 'Editar jugador' : 'Nuevo jugador con acceso' }}
             </h3>
 
             <div class="row g-3">
@@ -317,11 +373,12 @@ onMounted(async () => {
               <div class="col-12 col-lg-2">
                 <label class="form-label">Número</label>
                 <input
-                    v-model.number="formJerseyNumber"
+                    :value="formJerseyNumber ?? ''"
                     type="number"
                     min="0"
                     class="form-control"
-                    placeholder="Ej. 23" />
+                    placeholder="Ej. 23"
+                    @input="formJerseyNumber = ($event.target as HTMLInputElement).value ? Number(($event.target as HTMLInputElement).value) : null" />
               </div>
 
               <div class="col-12 col-lg-2">
@@ -332,12 +389,38 @@ onMounted(async () => {
                 </select>
               </div>
 
+              <div class="col-12 col-lg-6">
+                <label class="form-label">Email</label>
+                <input
+                    v-model="formEmail"
+                    type="email"
+                    class="form-control"
+                    :disabled="Boolean(editingPlayerId)"
+                    placeholder="email@ejemplo.com" />
+              </div>
+
+              <div class="col-12 col-lg-6">
+                <label class="form-label">Contraseña</label>
+                <input
+                    v-model="formPassword"
+                    type="text"
+                    class="form-control"
+                    :disabled="Boolean(editingPlayerId)"
+                    placeholder="Contraseña temporal" />
+              </div>
+
               <div class="col-12 d-flex gap-2 flex-wrap">
                 <button
                     class="btn btn-primary"
                     :disabled="saving || loading"
                     @click="savePlayer">
-                  {{ saving ? 'Guardando...' : editingPlayerId ? 'Guardar cambios' : 'Crear jugador' }}
+                  {{
+                    saving
+                        ? 'Guardando...'
+                        : editingPlayerId
+                            ? 'Guardar cambios'
+                            : 'Crear jugador'
+                  }}
                 </button>
 
                 <button
@@ -347,6 +430,12 @@ onMounted(async () => {
                     @click="cancelEditing">
                   Cancelar
                 </button>
+              </div>
+
+              <div v-if="editingPlayerId" class="col-12">
+                <div class="small text-body-secondary">
+                  En edición solo se actualizan los datos del jugador. Email y contraseña aplican al crear un jugador nuevo.
+                </div>
               </div>
             </div>
           </div>
@@ -396,7 +485,7 @@ onMounted(async () => {
                   <button
                       class="btn btn-outline-danger btn-sm"
                       :disabled="saving"
-                      @click="deletePlayer(player.id)">
+                      @click="deletePlayer(player.id, player.name)">
                     Eliminar
                   </button>
                 </div>
